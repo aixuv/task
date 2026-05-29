@@ -673,9 +673,13 @@ function LoginView({ onAuthenticated }) {
                 <Input type="password" required minLength={6} value={password} onChange={(event) => setPassword(event.target.value)} className="h-10 rounded-xl border border-neutral-300 bg-white px-3 text-neutral-950 placeholder:text-neutral-400 outline-none focus:border-neutral-500" placeholder="Minimum 6 characters" />
               </div>
               {message && <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-neutral-300">{message}</div>}
-              <Button type="submit" disabled={loading} className="h-10 w-full rounded-xl bg-white text-neutral-950 hover:bg-neutral-200">
-                {loading ? "Please wait..." : mode === "sign-in" ? "Sign in" : "Create account"}
-              </Button>
+                <Button
+                  type="submit"
+                  disabled={loading}
+                  className="h-10 w-full rounded-xl bg-white text-neutral-950 hover:bg-neutral-200 disabled:bg-white disabled:text-neutral-950 disabled:opacity-70"
+                >
+                  {loading ? "Please wait..." : mode === "sign-in" ? "Sign in" : "Create account"}
+                </Button>
               <button type="button" onClick={() => { setMode(mode === "sign-in" ? "sign-up" : "sign-in"); setMessage(""); }} className="w-full text-center text-xs text-neutral-400 hover:text-white">
                 {mode === "sign-in" ? "Need an account? Sign up" : "Already have an account? Sign in"}
               </button>
