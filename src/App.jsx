@@ -3115,19 +3115,39 @@ function TaskDetailModal({ statusColors, priorityColors, tagColors, task, status
         </div>
 
         <div className="max-h-[calc(92vh-62px)] overflow-y-auto p-4">
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1.3fr_0.7fr]">
-            <div className="space-y-3">
-              <div>
-                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Task title</label>
-                <Input value={draft.title} onChange={(e) => updateDraft({ title: e.target.value })} className="rounded-xl" />
+          <div className="grid min-w-0 grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1.3fr)_minmax(360px,0.7fr)]">
+            <div className="min-w-0 space-y-3">
+              <div className="min-w-0">
+                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                  Task title
+                </label>
+                <Input
+                  value={draft.title}
+                  onChange={(e) => updateDraft({ title: e.target.value })}
+                  className="h-10 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none focus:border-slate-400"
+                />
               </div>
-              <div>
-                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Description</label>
-                <Textarea value={draft.description} onChange={(e) => updateDraft({ description: e.target.value })} className="min-h-20 rounded-xl text-sm" />
+
+              <div className="min-w-0">
+                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                  Description
+                </label>
+                <Textarea
+                  value={draft.description}
+                  onChange={(e) => updateDraft({ description: e.target.value })}
+                  className="min-h-[96px] w-full min-w-0 resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-400"
+                />
               </div>
-              <div>
-                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Remark / latest update</label>
-                <Textarea value={draft.remarks} onChange={(e) => updateDraft({ remarks: e.target.value })} className="min-h-24 rounded-xl text-sm" />
+
+              <div className="min-w-0">
+                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                  Remark / latest update
+                </label>
+                <Textarea
+                  value={draft.remarks}
+                  onChange={(e) => updateDraft({ remarks: e.target.value })}
+                  className="min-h-[140px] w-full min-w-0 resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-400"
+                />
               </div>
 
               <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
