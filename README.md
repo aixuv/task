@@ -24,6 +24,5 @@ npm run dev
 ## 4. Login and user management
 The first admin email is configured as:
 
-`nikhilpareta16@gmail.com`
 
 Admin can edit user roles and disable/enable users from the hidden User Management tab. Only Admin and Director can see User Management, but only Admin can edit rights.
