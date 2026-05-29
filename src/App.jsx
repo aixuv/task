@@ -1542,7 +1542,7 @@ function HomeView(props) {
                 value={quickTitle}
                 onChange={(event) => setQuickTitle(event.target.value)}
                 placeholder="Write a quick task or note..."
-                className="h-8 rounded-xl text-xs"
+                className="h-9 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-slate-400"
                 onKeyDown={(event) => {
                   if (event.key === "Enter") addQuickTask();
                 }}
@@ -1551,7 +1551,7 @@ function HomeView(props) {
                 value={quickRemark}
                 onChange={(event) => setQuickRemark(event.target.value)}
                 placeholder="Remark / details"
-                className="min-h-12 rounded-xl text-xs"
+                className="min-h-[78px] w-full min-w-0 resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-slate-400"
               />
               <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
                 <select
