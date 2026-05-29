@@ -661,16 +661,16 @@ function LoginView({ onAuthenticated }) {
               {mode === "sign-up" && (
                 <div>
                   <label className="mb-1 block text-xs font-semibold text-neutral-300">Full name</label>
-                  <Input value={fullName} onChange={(event) => setFullName(event.target.value)} className="h-10 rounded-xl border-neutral-700 bg-neutral-900 text-white" placeholder="Your name" />
+                  <Input value={fullName} onChange={(event) => setFullName(event.target.value)} className="h-10 rounded-xl border border-neutral-300 bg-white px-3 text-neutral-950 placeholder:text-neutral-400 outline-none focus:border-neutral-500" placeholder="Your name" />
                 </div>
               )}
               <div>
                 <label className="mb-1 block text-xs font-semibold text-neutral-300">Email</label>
-                <Input type="email" required value={email} onChange={(event) => setEmail(event.target.value)} className="h-10 rounded-xl border-neutral-700 bg-neutral-900 text-white" placeholder="you@example.com" />
+                <Input type="email" required value={email} onChange={(event) => setEmail(event.target.value)} className="h-10 rounded-xl border border-neutral-300 bg-white px-3 text-neutral-950 placeholder:text-neutral-400 outline-none focus:border-neutral-500" placeholder="you@example.com" />
               </div>
               <div>
                 <label className="mb-1 block text-xs font-semibold text-neutral-300">Password</label>
-                <Input type="password" required minLength={6} value={password} onChange={(event) => setPassword(event.target.value)} className="h-10 rounded-xl border-neutral-700 bg-neutral-900 text-white" placeholder="Minimum 6 characters" />
+                <Input type="password" required minLength={6} value={password} onChange={(event) => setPassword(event.target.value)} className="h-10 rounded-xl border border-neutral-300 bg-white px-3 text-neutral-950 placeholder:text-neutral-400 outline-none focus:border-neutral-500" placeholder="Minimum 6 characters" />
               </div>
               {message && <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-neutral-300">{message}</div>}
               <Button type="submit" disabled={loading} className="h-10 w-full rounded-xl bg-white text-neutral-950 hover:bg-neutral-200">
