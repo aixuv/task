@@ -1854,11 +1854,11 @@ function CompactDatePicker({ value, onChange, title = "Deadline" }) {
   return (
     <label
       htmlFor={inputId}
-      className="relative flex h-6 w-full min-w-0 cursor-pointer items-center justify-between gap-1 rounded-md border border-slate-200 bg-white px-1.5 text-[10px] leading-none text-slate-700 shadow-sm hover:border-slate-300"
+      className="relative flex h-8 w-full min-w-0 cursor-pointer items-center justify-between gap-1.5 rounded-lg border border-slate-200 bg-white px-2 text-xs leading-normal text-slate-900 shadow-sm"
       title={title}
     >
       <span className="min-w-0 truncate">{formatDate(value) || "Select date"}</span>
-      <CalendarDays size={11} className="shrink-0 text-slate-400" />
+      <CalendarDays size={13} className="shrink-0 text-slate-400" />
       <input
         id={inputId}
         type="date"
@@ -1891,16 +1891,29 @@ function TaskCard({ task, statuses, groups, tags, statusColors, priorityColors, 
       <Card className="task-card min-w-0 overflow-hidden rounded-lg border-slate-200 bg-white/95 shadow-sm ring-1 ring-slate-100">
         <CardContent className="relative p-2 pl-3">
           <div className={classNames("absolute left-0 top-0 h-full w-1", taskPriorityAccent)} />
-          <div className="grid min-w-0 grid-cols-1 gap-1.5 md:grid-cols-[minmax(0,1fr)_160px_58px] md:items-center">
+
+          <div className="grid min-w-0 grid-cols-1 gap-1.5 md:grid-cols-[minmax(0,1fr)_290px_42px] md:items-center">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-1">
-                <button type="button" onClick={(event) => { event.stopPropagation(); openTaskPopup(task.id); }} className="min-w-0 truncate text-left text-sm font-bold leading-tight text-slate-900 hover:underline" title={task.title}>{task.title}</button>
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openTaskPopup(task.id);
+                  }}
+                  className="min-w-0 truncate text-left text-sm font-bold leading-tight text-slate-900 hover:underline"
+                  title={task.title}
+                >
+                  {task.title}
+                </button>
+
                 <span
                   className={classNames("light-chip rounded-full border px-1.5 py-0 text-[9px] font-medium", statusBadgeClass(task.status))}
                   style={statusChipStyle(task.status, statusColors)}
                 >
                   {task.status}
                 </span>
+
                 <span
                   className={classNames("light-chip rounded-full border px-1.5 py-0 text-[9px] font-medium", priorityBadgeClass(task.priority))}
                   style={priorityChipStyle(task.priority, priorityColors)}
@@ -1908,17 +1921,21 @@ function TaskCard({ task, statuses, groups, tags, statusColors, priorityColors, 
                   {task.priority}
                 </span>
               </div>
+
               <div className="mt-0.5 min-w-0 truncate text-xs text-slate-400" title={task.remarks || "No remark"}>
                 {task.remarks ? `Remark: ${task.remarks}` : "No remark"}
               </div>
             </div>
 
-            <div className="grid min-w-0 max-w-[160px] grid-cols-2 items-center gap-x-1 gap-y-1.5 py-0.5" onClick={(event) => event.stopPropagation()}>
+            <div
+              className="grid w-[290px] shrink-0 grid-cols-2 items-center gap-x-1.5 gap-y-1.5 py-0.5"
+              onClick={(event) => event.stopPropagation()}
+            >
               <select
                 value={task.status}
                 onClick={(event) => event.stopPropagation()}
                 onChange={(event) => updateTask(task.id, { status: event.target.value })}
-                className="h-6 w-full min-w-0 rounded-md border border-slate-200 bg-white px-1.5 text-[10px] leading-none shadow-sm"
+                className="h-8 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2 text-xs leading-normal text-slate-900 shadow-sm"
                 title="Status"
               >
                 {statuses.map((status) => (
@@ -1930,7 +1947,7 @@ function TaskCard({ task, statuses, groups, tags, statusColors, priorityColors, 
                 value={task.group}
                 onClick={(event) => event.stopPropagation()}
                 onChange={(event) => updateTask(task.id, { group: event.target.value })}
-                className="h-6 w-full min-w-0 rounded-md border border-slate-200 bg-white px-1.5 text-[10px] leading-none shadow-sm"
+                className="h-8 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2 text-xs leading-normal text-slate-900 shadow-sm"
                 title="Group"
               >
                 {groups.map((group) => (
@@ -1942,7 +1959,7 @@ function TaskCard({ task, statuses, groups, tags, statusColors, priorityColors, 
                 value={task.priority}
                 onClick={(event) => event.stopPropagation()}
                 onChange={(event) => updateTask(task.id, { priority: event.target.value })}
-                className="h-6 w-full min-w-0 rounded-md border border-slate-200 bg-white px-1.5 text-[10px] leading-none shadow-sm"
+                className="h-8 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2 text-xs leading-normal text-slate-900 shadow-sm"
                 title="Priority"
               >
                 <option>High</option>
@@ -1950,7 +1967,7 @@ function TaskCard({ task, statuses, groups, tags, statusColors, priorityColors, 
                 <option>Low</option>
               </select>
 
-              <div onClick={(event) => event.stopPropagation()}>
+              <div className="min-w-0" onClick={(event) => event.stopPropagation()}>
                 <CompactDatePicker
                   value={task.deadline}
                   onChange={(event) => updateTask(task.id, { deadline: event.target.value })}
@@ -1960,8 +1977,14 @@ function TaskCard({ task, statuses, groups, tags, statusColors, priorityColors, 
             </div>
 
             <div className="flex min-w-0 items-center justify-end gap-1" onClick={(event) => event.stopPropagation()}>
-              <Button variant="ghost" size="icon" onClick={() => removeTask(task.id)} className="h-6 w-6 rounded-md text-slate-400 hover:text-red-600">
-                <Trash2 size={12} />
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => removeTask(task.id)}
+                className="h-8 w-8 rounded-md text-slate-400 hover:text-red-600"
+                title="Delete task"
+              >
+                <Trash2 size={14} />
               </Button>
             </div>
           </div>
@@ -1973,6 +1996,7 @@ function TaskCard({ task, statuses, groups, tags, statusColors, priorityColors, 
                 <div className="h-1.5 rounded-full progress-fill" style={{ width: `${progress}%` }} />
               </div>
             </div>
+
             <div className="flex min-w-0 flex-wrap items-center gap-1 overflow-hidden">
               {task.tags.slice(0, 3).map((tag, tagIndex) => (
                 <span
@@ -1983,28 +2007,53 @@ function TaskCard({ task, statuses, groups, tags, statusColors, priorityColors, 
                   #{tag}
                 </span>
               ))}
+
               {task.tags.length > 3 && <span className="text-[9px] text-slate-400">+{task.tags.length - 3}</span>}
               <span className="text-[10px] text-slate-500">{task.group}</span>
               <span className="text-[10px] text-slate-500">{formatDate(task.deadline)}</span>
-              {task.dependency && <span className="min-w-0 truncate text-[10px] text-slate-500" title={task.dependency}>Depends: {task.dependency}</span>}
+
+              {task.dependency && (
+                <span className="min-w-0 truncate text-[10px] text-slate-500" title={task.dependency}>
+                  Depends: {task.dependency}
+                </span>
+              )}
             </div>
           </div>
 
           {expanded && (
-            <div className="mt-2 grid grid-cols-1 gap-2 border-t border-slate-100 pt-2 lg:grid-cols-2" onClick={(event) => event.stopPropagation()}>
+            <div
+              className="mt-2 grid grid-cols-1 gap-2 border-t border-slate-100 pt-2 lg:grid-cols-2"
+              onClick={(event) => event.stopPropagation()}
+            >
               <div>
                 <div className="mb-1 flex items-center justify-between">
                   <div className="text-[10px] font-medium uppercase tracking-wide text-slate-400">Subtasks</div>
-                  <Button variant="outline" size="sm" onClick={(event) => { event.stopPropagation(); addSubtask(task.id); }} className="h-7 rounded-md px-2 text-[10px]">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      addSubtask(task.id);
+                    }}
+                    className="h-7 rounded-md px-2 text-[10px]"
+                  >
                     Add
                   </Button>
                 </div>
+
                 <div className="space-y-1">
                   {task.subtasks.length ? (
                     task.subtasks.map((subtask) => (
                       <label key={subtask.id} className="flex items-center gap-2 rounded-md bg-slate-50 px-2 py-1 text-[11px]">
-                        <input type="checkbox" checked={subtask.done} onClick={(event) => event.stopPropagation()} onChange={() => toggleSubtask(task.id, subtask.id)} />
-                        <span className={subtask.done ? "text-slate-400 line-through" : "text-slate-700"}>{subtask.title}</span>
+                        <input
+                          type="checkbox"
+                          checked={subtask.done}
+                          onClick={(event) => event.stopPropagation()}
+                          onChange={() => toggleSubtask(task.id, subtask.id)}
+                        />
+                        <span className={subtask.done ? "text-slate-400 line-through" : "text-slate-700"}>
+                          {subtask.title}
+                        </span>
                       </label>
                     ))
                   ) : (
@@ -2014,12 +2063,13 @@ function TaskCard({ task, statuses, groups, tags, statusColors, priorityColors, 
               </div>
 
               <div className="space-y-1.5">
-                <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
                   <select
                     value={task.dependency}
                     onClick={(event) => event.stopPropagation()}
                     onChange={(event) => updateTask(task.id, { dependency: event.target.value })}
-                    className="h-6 w-full min-w-0 rounded-md border border-slate-200 bg-white px-1.5 text-[10px] leading-none shadow-sm"
+                    className="h-8 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2 text-xs leading-normal text-slate-900 shadow-sm"
+                    title="Dependency"
                   >
                     <option value="">No dependency</option>
                     {allTasks
@@ -2030,14 +2080,17 @@ function TaskCard({ task, statuses, groups, tags, statusColors, priorityColors, 
                         </option>
                       ))}
                   </select>
+
                   <Input
                     type="date"
                     value={task.completedAt}
                     onClick={(event) => event.stopPropagation()}
                     onChange={(event) => updateTask(task.id, { completedAt: event.target.value })}
-                    className="h-7 rounded-md px-1 text-[10px]"
+                    className="h-8 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs leading-normal text-slate-900 shadow-sm"
+                    title="Actual completion date"
                   />
                 </div>
+
                 <Textarea
                   value={task.remarks}
                   onClick={(event) => event.stopPropagation()}
@@ -2045,19 +2098,28 @@ function TaskCard({ task, statuses, groups, tags, statusColors, priorityColors, 
                   className="min-h-12 rounded-md text-[11px]"
                   placeholder="Add latest remark..."
                 />
+
                 <div className="flex flex-wrap gap-1">
-                  {tags.map((tag) => (
-                    <button
-                      key={tag}
-                      onClick={(event) => { event.stopPropagation(); toggleTaskTag(task.id, tag); }}
-                      className={classNames(
-                        "tag-chip rounded-full border px-1.5 py-0 text-[9px] font-medium transition",
-                        task.tags.includes(tag) ? tagChipClass(tags.indexOf(tag)) : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
-                      )}
-                    >
-                      #{tag}
-                    </button>
-                  ))}
+                  {tags.map((tag, tagIndex) => {
+                    const active = task.tags.includes(tag);
+
+                    return (
+                      <button
+                        key={tag}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          toggleTaskTag(task.id, tag);
+                        }}
+                        className={classNames(
+                          "tag-chip rounded-full border px-1.5 py-0 text-[9px] font-medium transition",
+                          active ? tagChipClass(tagIndex) : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+                        )}
+                        style={active ? tagChipStyle(tag, tagColors, tagIndex) : undefined}
+                      >
+                        #{tag}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>
