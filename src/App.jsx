@@ -2728,7 +2728,6 @@ function GanttView({ statusColors, priorityColors, tasks, groups, statuses, prio
   );
 }
 
-
 function TaskDetailModal({ statusColors, priorityColors, tagColors, task, statuses, groups, priorities, tags, allTasks, updateTask, toggleSubtask, addSubtask, removeTask, onClose }) {
   const [draft, setDraft] = useState(task || null);
 
