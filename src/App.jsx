@@ -1039,14 +1039,19 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
   }
 
   function addSubtask(taskId) {
-    const title = window.prompt("Subtask name");
-    if (!title?.trim()) return;
     setTasks((current) =>
       current.map((task) =>
         task.id === taskId
           ? {
               ...task,
-              subtasks: [...task.subtasks, { id: Date.now(), title: title.trim(), done: false }],
+              subtasks: [
+                ...task.subtasks,
+                {
+                  id: Date.now(),
+                  title: "",
+                  done: false,
+                },
+              ],
             }
           : task
       )
