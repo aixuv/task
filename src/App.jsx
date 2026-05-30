@@ -2235,6 +2235,7 @@ function TaskCard({ task, statuses, groups, priorities = ["High", "Medium", "Low
               className="mt-2 grid grid-cols-1 gap-2 border-t border-slate-100 pt-2 lg:grid-cols-[minmax(360px,0.9fr)_minmax(520px,1.1fr)]"
               onClick={(event) => event.stopPropagation()}
             >
+              {/* Left side - Subtasks */}
               <div>
                 <div className="mb-1 flex items-center justify-between">
                   <div className="text-[10px] font-medium uppercase tracking-wide text-slate-400">Subtasks</div>
@@ -2251,15 +2252,19 @@ function TaskCard({ task, statuses, groups, priorities = ["High", "Medium", "Low
                   </Button>
                 </div>
 
-                <div className="space-y-1">
+                <div className="ml-3 space-y-1 border-l-2 border-slate-100 pl-3">
                   {task.subtasks.length ? (
                     task.subtasks.map((subtask) => (
-                      <div key={subtask.id} className="flex items-center gap-2 rounded-md bg-slate-50 px-2 py-1 text-[11px]">
+                      <div
+                        key={subtask.id}
+                        className="flex items-center gap-2 rounded-md border-l-2 border-slate-200 bg-slate-50 px-3 py-1 text-[11px]"
+                      >
                         <input
                           type="checkbox"
                           checked={subtask.done}
                           onClick={(event) => event.stopPropagation()}
                           onChange={() => toggleSubtask(task.id, subtask.id)}
+                          className="h-4 w-4 shrink-0"
                           title="Mark subtask done"
                         />
                         <input
@@ -2278,7 +2283,7 @@ function TaskCard({ task, statuses, groups, priorities = ["High", "Medium", "Low
                             event.stopPropagation();
                             removeSubtask(task.id, subtask.id);
                           }}
-                          className="rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-red-500 hover:bg-red-50"
+                          className="shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-red-500 hover:bg-red-50"
                           title="Delete subtask"
                         >
                           Delete
@@ -2286,13 +2291,22 @@ function TaskCard({ task, statuses, groups, priorities = ["High", "Medium", "Low
                       </div>
                     ))
                   ) : (
-                    <div className="rounded-md bg-slate-50 px-2 py-1.5 text-[11px] text-slate-400">No subtasks</div>
+                    <div className="rounded-md bg-slate-50 px-3 py-1.5 text-[11px] text-slate-400">No subtasks</div>
                   )}
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-2 lg:grid-cols-[minmax(260px,0.55fr)_minmax(420px,1fr)]">
-                <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+              {/* Right side - Row 1 Remark, Row 2 Dependency + Completion, Row 3 Tags */}
+              <div className="space-y-2">
+                <Textarea
+                  value={task.remarks}
+                  onClick={(event) => event.stopPropagation()}
+                  onChange={(event) => updateTask(task.id, { remarks: event.target.value })}
+                  className="min-h-[110px] w-full resize-y rounded-md text-[11px]"
+                  placeholder="Add latest remark..."
+                />
+
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <select
                     value={task.dependency}
                     onClick={(event) => event.stopPropagation()}
@@ -2319,14 +2333,6 @@ function TaskCard({ task, statuses, groups, priorities = ["High", "Medium", "Low
                     title="Actual completion date"
                   />
                 </div>
-
-                <Textarea
-                  value={task.remarks}
-                  onClick={(event) => event.stopPropagation()}
-                  onChange={(event) => updateTask(task.id, { remarks: event.target.value })}
-                  className="min-h-[110px] w-full resize-y rounded-md text-[11px]"
-                  placeholder="Add latest remark..."
-                />
 
                 <div className="flex flex-wrap gap-1">
                   {tags.map((tag, tagIndex) => {
