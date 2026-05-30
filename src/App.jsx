@@ -15,11 +15,14 @@ import {
   Table2,
   Tag,
   Trash2,
+  Users,
+  LogOut,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { supabase } from "@/lib/supabaseClient";
 
 const initialStatuses = ["Backlog", "Open", "In Progress", "Blocked", "Done"];
 const initialGroups = ["Personal", "Work", "Project A", "Learning"];
@@ -602,7 +605,189 @@ const appStyles = String.raw`
   }
 `;
 
-export default function NoteTaskAppV1() {
+
+function LoginView({ onAuthenticated }) {
+  const [mode, setMode] = useState("sign-in");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
+
+  async function submitAuth(event) {
+    event.preventDefault();
+    setLoading(true);
+    setMessage("");
+    const normalizedEmail = email.trim().toLowerCase();
+    try {
+      if (mode === "sign-up") {
+        const { error } = await supabase.auth.signUp({
+          email: normalizedEmail,
+          password,
+          options: {
+            data: { full_name: fullName.trim() },
+            emailRedirectTo: window.location.origin + window.location.pathname,
+          },
+        });
+        if (error) throw error;
+        setMessage("Signup done. Check your email if confirmation is enabled, then sign in.");
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password });
+        if (error) throw error;
+        onAuthenticated?.();
+      }
+    } catch (error) {
+      setMessage(error.message || "Authentication failed.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-neutral-950 text-white">
+      <div className="mx-auto flex min-h-screen max-w-6xl items-center justify-center p-4">
+        <div className="grid w-full grid-cols-1 gap-6 lg:grid-cols-[1fr_420px] lg:items-center">
+          <div className="hidden lg:block">
+            <div className="mb-4 inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-neutral-300">NoteFlow V1 · Task + note workspace</div>
+            <h1 className="max-w-xl text-5xl font-bold tracking-tight">Manage notes, tasks, deadlines, and Gantt plans in one workspace.</h1>
+            <p className="mt-4 max-w-xl text-base leading-7 text-neutral-400">Login keeps your tasks, groups, tags, colors, and settings synced with Supabase.</p>
+          </div>
+          <form onSubmit={submitAuth} className="rounded-3xl border border-white/10 bg-white/[0.06] p-6 shadow-2xl backdrop-blur">
+            <div className="mb-5">
+              <h2 className="text-2xl font-bold">{mode === "sign-in" ? "Sign in" : "Create account"}</h2>
+              <p className="mt-1 text-sm text-neutral-400">Use your registered email and password.</p>
+            </div>
+            <div className="space-y-3">
+              {mode === "sign-up" && (
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-neutral-300">Full name</label>
+                  <Input value={fullName} onChange={(event) => setFullName(event.target.value)} className="h-10 rounded-xl border border-neutral-300 bg-white px-3 text-neutral-950 placeholder:text-neutral-400 outline-none focus:border-neutral-500" placeholder="Your name" />
+                </div>
+              )}
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-neutral-300">Email</label>
+                <Input type="email" required value={email} onChange={(event) => setEmail(event.target.value)} className="h-10 rounded-xl border border-neutral-300 bg-white px-3 text-neutral-950 placeholder:text-neutral-400 outline-none focus:border-neutral-500" placeholder="you@example.com" />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-neutral-300">Password</label>
+                <Input type="password" required minLength={6} value={password} onChange={(event) => setPassword(event.target.value)} className="h-10 rounded-xl border border-neutral-300 bg-white px-3 text-neutral-950 placeholder:text-neutral-400 outline-none focus:border-neutral-500" placeholder="Minimum 6 characters" />
+              </div>
+              {message && <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-neutral-300">{message}</div>}
+                <button
+                  type="submit"
+                  disabled={loading}
+                  style={{
+                    width: "100%",
+                    height: "44px",
+                    borderRadius: "14px",
+                    background: "#ffffff",
+                    color: "#111827",
+                    fontWeight: 700,
+                    border: "1px solid #ffffff",
+                    cursor: loading ? "not-allowed" : "pointer",
+                    opacity: loading ? 0.75 : 1,
+                  }}
+                  onMouseEnter={(event) => {
+                    event.currentTarget.style.background = "#e5e7eb";
+                    event.currentTarget.style.color = "#111827";
+                  }}
+                  onMouseLeave={(event) => {
+                    event.currentTarget.style.background = "#ffffff";
+                    event.currentTarget.style.color = "#111827";
+                  }}
+                >
+                  {loading ? "Please wait..." : mode === "sign-in" ? "Sign in" : "Create account"}
+                </button>
+              <button type="button" onClick={() => { setMode(mode === "sign-in" ? "sign-up" : "sign-in"); setMessage(""); }} className="w-full text-center text-xs text-neutral-400 hover:text-white">
+                {mode === "sign-in" ? "Need an account? Sign up" : "Already have an account? Sign in"}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+async function fetchOrCreateProfile(session) {
+  if (!session?.user) return null;
+  const { data, error } = await supabase.from("user_profiles").select("*").eq("id", session.user.id).maybeSingle();
+  if (error) throw error;
+  if (data) return data;
+  const email = session.user.email || "";
+  const fullName = session.user.user_metadata?.full_name || "";
+  const { data: created, error: createError } = await supabase
+    .from("user_profiles")
+    .insert({ id: session.user.id, email, full_name: fullName, role: email.toLowerCase() === "nikhilpareta16@gmail.com" ? "admin" : "member", is_active: true })
+    .select("*")
+    .single();
+  if (createError) throw createError;
+  return created;
+}
+
+function App() {
+  const [session, setSession] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState("");
+
+  async function loadProfile(nextSession) {
+    if (!nextSession) {
+      setProfile(null);
+      setLoading(false);
+      return;
+    }
+    try {
+      const nextProfile = await fetchOrCreateProfile(nextSession);
+      setProfile(nextProfile);
+      setAuthError("");
+      if (nextProfile && nextProfile.is_active === false) {
+        setAuthError("Your account is disabled. Contact admin.");
+        await supabase.auth.signOut();
+      }
+    } catch (error) {
+      setAuthError(error.message || "Could not load profile.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    let mounted = true;
+    supabase.auth.getSession().then(({ data }) => {
+      if (!mounted) return;
+      setSession(data.session || null);
+      loadProfile(data.session || null);
+    });
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession || null);
+      setLoading(true);
+      loadProfile(nextSession || null);
+    });
+    return () => {
+      mounted = false;
+      listener.subscription.unsubscribe();
+    };
+  }, []);
+
+  if (loading) {
+    return <div className="flex min-h-screen items-center justify-center bg-neutral-950 text-white">Loading NoteFlow...</div>;
+  }
+
+  if (!session) {
+    return <LoginView onAuthenticated={() => {}} />;
+  }
+
+  if (authError) {
+    return <div className="flex min-h-screen items-center justify-center bg-neutral-950 p-4 text-white"><div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-sm">{authError}</div></div>;
+  }
+
+  return <NoteTaskAppV1 session={session} profile={profile} onSignOut={() => supabase.auth.signOut()} />;
+}
+
+export default App;
+
+function NoteTaskAppV1({ session, profile, onSignOut }) {
   const [activeView, setActiveView] = useState("Home");
   const [tasks, setTasks] = useState(initialTasks);
   const [statuses, setStatuses] = useState(initialStatuses);
@@ -636,6 +821,8 @@ export default function NoteTaskAppV1() {
   const [statusColors, setStatusColors] = useState(defaultStatusColors);
   const [priorityColors, setPriorityColors] = useState(defaultPriorityColors);
   const [tagColors, setTagColors] = useState(defaultTagColors);
+  const [cloudReady, setCloudReady] = useState(false);
+  const [cloudStatus, setCloudStatus] = useState("Loading cloud data...");
 
   const filteredTasks = useMemo(() => {
     return tasks.filter((task) => {
@@ -656,6 +843,88 @@ export default function NoteTaskAppV1() {
   const doneTasks = tasks.filter((task) => task.status === "Done");
   const overdueTasks = tasks.filter((task) => task.status !== "Done" && task.deadline < todayIso());
 
+  useEffect(() => {
+    let ignore = false;
+    async function loadCloudState() {
+      if (!session?.user?.id) return;
+      setCloudReady(false);
+      setCloudStatus("Loading cloud data...");
+      const { data, error } = await supabase
+        .from("user_app_state")
+        .select("state")
+        .eq("user_id", session.user.id)
+        .eq("app_key", "note_task_v1")
+        .maybeSingle();
+      if (ignore) return;
+      if (error) {
+        setCloudStatus(`Cloud load failed: ${error.message}`);
+        setCloudReady(true);
+        return;
+      }
+      const state = data?.state;
+      if (state) {
+        if (Array.isArray(state.tasks)) setTasks(state.tasks);
+        if (Array.isArray(state.statuses)) setStatuses(state.statuses);
+        if (Array.isArray(state.groups)) setGroups(state.groups);
+        if (Array.isArray(state.tags)) setTags(state.tags);
+        if (state.defaultGroupMode) setDefaultGroupMode(state.defaultGroupMode);
+        if (state.homeGroupBy) setHomeGroupBy(state.homeGroupBy);
+        if (state.tableGroupBy) setTableGroupBy(state.tableGroupBy);
+        if (state.ganttGroupBy) setGanttGroupBy(state.ganttGroupBy);
+        if (state.calendarGroupBy) setCalendarGroupBy(state.calendarGroupBy);
+        if (state.ganttColumns) setGanttColumns(state.ganttColumns);
+        if (state.kanbanBy) setKanbanBy(state.kanbanBy);
+        if (state.tableColumns) setTableColumns(state.tableColumns);
+        if (typeof state.homeMinimalMode === "boolean") setHomeMinimalMode(state.homeMinimalMode);
+        if (typeof state.sidebarCollapsed === "boolean") setSidebarCollapsed(state.sidebarCollapsed);
+        if (state.displayScale) setDisplayScale(state.displayScale);
+        if (typeof state.darkMode === "boolean") setDarkMode(state.darkMode);
+        if (state.statusColors) setStatusColors({ ...defaultStatusColors, ...state.statusColors });
+        if (state.priorityColors) setPriorityColors({ ...defaultPriorityColors, ...state.priorityColors });
+        if (state.tagColors) setTagColors({ ...defaultTagColors, ...state.tagColors });
+      }
+      setCloudStatus(data?.state ? "Cloud data loaded" : "Using default sample data");
+      setCloudReady(true);
+    }
+    loadCloudState();
+    return () => { ignore = true; };
+  }, [session?.user?.id]);
+
+  useEffect(() => {
+    if (!cloudReady || !session?.user?.id) return;
+    const handle = window.setTimeout(async () => {
+      const state = {
+        tasks,
+        statuses,
+        groups,
+        tags,
+        defaultGroupMode,
+        homeGroupBy,
+        tableGroupBy,
+        ganttGroupBy,
+        calendarGroupBy,
+        ganttColumns,
+        kanbanBy,
+        tableColumns,
+        homeMinimalMode,
+        sidebarCollapsed,
+        displayScale,
+        darkMode,
+        statusColors,
+        priorityColors,
+        tagColors,
+        updatedAt: new Date().toISOString(),
+      };
+      const { error } = await supabase
+        .from("user_app_state")
+        .upsert({ user_id: session.user.id, app_key: "note_task_v1", state, updated_at: new Date().toISOString() }, { onConflict: "user_id,app_key" });
+      setCloudStatus(error ? `Cloud save failed: ${error.message}` : "Saved to cloud");
+    }, 600);
+    return () => window.clearTimeout(handle);
+  }, [cloudReady, session?.user?.id, tasks, statuses, groups, tags, defaultGroupMode, homeGroupBy, tableGroupBy, ganttGroupBy, calendarGroupBy, ganttColumns, kanbanBy, tableColumns, homeMinimalMode, sidebarCollapsed, displayScale, darkMode, statusColors, priorityColors, tagColors]);
+
+
+  const canManageUsers = ["admin", "director"].includes(profile?.role);
   const navItems = [
     { name: "Home", icon: Home },
     { name: "Kanban", icon: Columns3 },
@@ -663,6 +932,7 @@ export default function NoteTaskAppV1() {
     { name: "Calendar", icon: CalendarDays },
     { name: "Gantt", icon: GanttChartSquare },
     { name: "Master Data", icon: LayoutDashboard },
+    ...(canManageUsers ? [{ name: "User Management", icon: Users }] : []),
   ];
 
   function applyDefaultGroupMode(nextMode) {
@@ -832,11 +1102,11 @@ export default function NoteTaskAppV1() {
   const kanbanColumns = useMemo(() => {
     if (kanbanBy === "Status") return statuses;
     if (kanbanBy === "Group") return groups;
-    if (kanbanBy === "Priority") return priorities;
+    if (kanbanBy === "Priority") return ["High", "Medium", "Low"];
     if (kanbanBy === "Deadline") return [...new Set(filteredTasks.map((task) => task.deadline))].sort();
     if (kanbanBy === "Tag") return tags;
     return statuses;
-  }, [kanbanBy, statuses, groups, priorities, tags, filteredTasks]);
+  }, [kanbanBy, statuses, groups, tags, filteredTasks]);
 
   return (
     <div className={classNames("min-h-screen transition-colors", darkMode ? "bg-neutral-950 text-neutral-100 dark" : "bg-slate-50 text-slate-900")}>
@@ -881,6 +1151,15 @@ export default function NoteTaskAppV1() {
               );
             })}
           </nav>
+          {!sidebarCollapsed && (
+            <div className="absolute bottom-3 left-2.5 right-2.5 rounded-xl border border-slate-200 bg-white/70 p-2 text-xs dark:border-neutral-800 dark:bg-neutral-900/70">
+              <div className="truncate font-semibold">{profile?.full_name || profile?.email || session?.user?.email}</div>
+              <div className="mb-2 truncate text-[10px] uppercase tracking-wide text-slate-500">{profile?.role || "member"} · {cloudStatus}</div>
+              <Button variant="outline" onClick={onSignOut} className="h-7 w-full rounded-lg px-2 text-[10px]">
+                <LogOut size={12} className="mr-1" /> Sign out
+              </Button>
+            </div>
+          )}
         </aside>
 
         <main
@@ -973,7 +1252,6 @@ export default function NoteTaskAppV1() {
             <HomeView
               groups={groups}
               statuses={statuses}
-              priorities={priorities}
               tags={tags}
               statusColors={statusColors}
               priorityColors={priorityColors}
@@ -1035,7 +1313,6 @@ export default function NoteTaskAppV1() {
               tasks={filteredTasks}
               statuses={statuses}
               groups={groups}
-              priorities={priorities}
               tags={tags}
               tableGroupBy={tableGroupBy}
               setTableGroupBy={setTableGroupBy}
@@ -1064,7 +1341,6 @@ export default function NoteTaskAppV1() {
               tasks={filteredTasks}
               groups={groups}
               statuses={statuses}
-              priorities={priorities}
               tags={tags}
               ganttGroupBy={ganttGroupBy}
               setGanttGroupBy={setGanttGroupBy}
@@ -1075,6 +1351,10 @@ export default function NoteTaskAppV1() {
               openTaskPopup={openTaskPopup}
             />
           )}
+          {activeView === "User Management" && canManageUsers && (
+            <UserManagementView currentProfile={profile} />
+          )}
+          
           {activeView === "Master Data" && (
             <MasterDataView
               groups={groups}
@@ -1108,7 +1388,6 @@ export default function NoteTaskAppV1() {
               task={tasks.find((task) => task.id === taskPopupId)}
               statuses={statuses}
               groups={groups}
-              priorities={priorities}
               tags={tags}
               allTasks={tasks}
               updateTask={updateTask}
@@ -1145,7 +1424,6 @@ function HomeView(props) {
   const {
     groups,
     statuses,
-    priorities,
     tags,
     statusColors,
     priorityColors,
@@ -1238,7 +1516,6 @@ function HomeView(props) {
     let order = [];
     if (homeGroupBy === "Group") order = groups;
     if (homeGroupBy === "Status") order = statuses;
-    if (homeGroupBy === "Priority") order = priorities;
     if (homeGroupBy === "Tag") order = tags.map((tag) => `#${tag}`);
 
     const entries = Object.entries(bucket).map(([title, tasks]) => ({ title, tasks }));
@@ -1249,7 +1526,7 @@ function HomeView(props) {
       return entries.sort((a, b) => order.indexOf(a.title) - order.indexOf(b.title));
     }
     return entries;
-  }, [openTasks, homeGroupBy, groups, statuses, priorities, tags]);
+  }, [openTasks, homeGroupBy, groups, statuses, tags]);
 
   return (
     <div className={classNames("relative min-w-0", homeMinimalMode ? "" : "grid grid-cols-1 gap-2 xl:grid-cols-[260px_minmax(0,1fr)] 2xl:grid-cols-[280px_minmax(0,1fr)]")}>
@@ -1265,7 +1542,7 @@ function HomeView(props) {
                 value={quickTitle}
                 onChange={(event) => setQuickTitle(event.target.value)}
                 placeholder="Write a quick task or note..."
-                className="h-8 rounded-xl text-xs"
+                className="h-9 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-slate-400"
                 onKeyDown={(event) => {
                   if (event.key === "Enter") addQuickTask();
                 }}
@@ -1274,7 +1551,7 @@ function HomeView(props) {
                 value={quickRemark}
                 onChange={(event) => setQuickRemark(event.target.value)}
                 placeholder="Remark / details"
-                className="min-h-12 rounded-xl text-xs"
+                className="min-h-[78px] w-full min-w-0 resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-slate-400"
               />
               <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
                 <select
@@ -1577,11 +1854,11 @@ function CompactDatePicker({ value, onChange, title = "Deadline" }) {
   return (
     <label
       htmlFor={inputId}
-      className="relative flex h-6 w-full min-w-0 cursor-pointer items-center justify-between gap-1 rounded-md border border-slate-200 bg-white px-1.5 text-[10px] leading-none text-slate-700 shadow-sm hover:border-slate-300"
+      className="relative flex h-8 w-full min-w-0 cursor-pointer items-center justify-between gap-1.5 rounded-lg border border-slate-200 bg-white px-2 text-xs leading-normal text-slate-900 shadow-sm"
       title={title}
     >
       <span className="min-w-0 truncate">{formatDate(value) || "Select date"}</span>
-      <CalendarDays size={11} className="shrink-0 text-slate-400" />
+      <CalendarDays size={13} className="shrink-0 text-slate-400" />
       <input
         id={inputId}
         type="date"
@@ -1594,7 +1871,7 @@ function CompactDatePicker({ value, onChange, title = "Deadline" }) {
   );
 }
 
-function TaskCard({ task, statuses, groups, priorities, tags, statusColors, priorityColors, tagColors, updateTask, toggleSubtask, addSubtask, removeTask, toggleTaskTag, allTasks, openTaskPopup }) {
+function TaskCard({ task, statuses, groups, tags, statusColors, priorityColors, tagColors, updateTask, toggleSubtask, addSubtask, removeTask, toggleTaskTag, allTasks, openTaskPopup }) {
   const progress = getProgress(task);
   const [expanded, setExpanded] = useState(false);
   const taskPriorityAccent = {
@@ -1614,16 +1891,29 @@ function TaskCard({ task, statuses, groups, priorities, tags, statusColors, prio
       <Card className="task-card min-w-0 overflow-hidden rounded-lg border-slate-200 bg-white/95 shadow-sm ring-1 ring-slate-100">
         <CardContent className="relative p-2 pl-3">
           <div className={classNames("absolute left-0 top-0 h-full w-1", taskPriorityAccent)} />
-          <div className="grid min-w-0 grid-cols-1 gap-1.5 md:grid-cols-[minmax(0,1fr)_160px_58px] md:items-center">
+
+          <div className="grid min-w-0 grid-cols-1 gap-1.5 md:grid-cols-[minmax(0,1fr)_290px_42px] md:items-center">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-1">
-                <button type="button" onClick={(event) => { event.stopPropagation(); openTaskPopup(task.id); }} className="min-w-0 truncate text-left text-sm font-bold leading-tight text-slate-900 hover:underline" title={task.title}>{task.title}</button>
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openTaskPopup(task.id);
+                  }}
+                  className="min-w-0 truncate text-left text-sm font-bold leading-tight text-slate-900 hover:underline"
+                  title={task.title}
+                >
+                  {task.title}
+                </button>
+
                 <span
                   className={classNames("light-chip rounded-full border px-1.5 py-0 text-[9px] font-medium", statusBadgeClass(task.status))}
                   style={statusChipStyle(task.status, statusColors)}
                 >
                   {task.status}
                 </span>
+
                 <span
                   className={classNames("light-chip rounded-full border px-1.5 py-0 text-[9px] font-medium", priorityBadgeClass(task.priority))}
                   style={priorityChipStyle(task.priority, priorityColors)}
@@ -1631,17 +1921,21 @@ function TaskCard({ task, statuses, groups, priorities, tags, statusColors, prio
                   {task.priority}
                 </span>
               </div>
+
               <div className="mt-0.5 min-w-0 truncate text-xs text-slate-400" title={task.remarks || "No remark"}>
                 {task.remarks ? `Remark: ${task.remarks}` : "No remark"}
               </div>
             </div>
 
-            <div className="grid min-w-0 max-w-[160px] grid-cols-2 items-center gap-x-1 gap-y-1.5 py-0.5" onClick={(event) => event.stopPropagation()}>
+            <div
+              className="grid w-[290px] shrink-0 grid-cols-2 items-center gap-x-1.5 gap-y-1.5 py-0.5"
+              onClick={(event) => event.stopPropagation()}
+            >
               <select
                 value={task.status}
                 onClick={(event) => event.stopPropagation()}
                 onChange={(event) => updateTask(task.id, { status: event.target.value })}
-                className="h-6 w-full min-w-0 rounded-md border border-slate-200 bg-white px-1.5 text-[10px] leading-none shadow-sm"
+                className="h-8 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2 text-xs leading-normal text-slate-900 shadow-sm"
                 title="Status"
               >
                 {statuses.map((status) => (
@@ -1653,7 +1947,7 @@ function TaskCard({ task, statuses, groups, priorities, tags, statusColors, prio
                 value={task.group}
                 onClick={(event) => event.stopPropagation()}
                 onChange={(event) => updateTask(task.id, { group: event.target.value })}
-                className="h-6 w-full min-w-0 rounded-md border border-slate-200 bg-white px-1.5 text-[10px] leading-none shadow-sm"
+                className="h-8 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2 text-xs leading-normal text-slate-900 shadow-sm"
                 title="Group"
               >
                 {groups.map((group) => (
@@ -1665,15 +1959,15 @@ function TaskCard({ task, statuses, groups, priorities, tags, statusColors, prio
                 value={task.priority}
                 onClick={(event) => event.stopPropagation()}
                 onChange={(event) => updateTask(task.id, { priority: event.target.value })}
-                className="h-6 w-full min-w-0 rounded-md border border-slate-200 bg-white px-1.5 text-[10px] leading-none shadow-sm"
+                className="h-8 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2 text-xs leading-normal text-slate-900 shadow-sm"
                 title="Priority"
               >
-                {priorities.map((priority) => (
-                  <option key={priority}>{priority}</option>
-                ))}
+                <option>High</option>
+                <option>Medium</option>
+                <option>Low</option>
               </select>
 
-              <div onClick={(event) => event.stopPropagation()}>
+              <div className="min-w-0" onClick={(event) => event.stopPropagation()}>
                 <CompactDatePicker
                   value={task.deadline}
                   onChange={(event) => updateTask(task.id, { deadline: event.target.value })}
@@ -1683,8 +1977,14 @@ function TaskCard({ task, statuses, groups, priorities, tags, statusColors, prio
             </div>
 
             <div className="flex min-w-0 items-center justify-end gap-1" onClick={(event) => event.stopPropagation()}>
-              <Button variant="ghost" size="icon" onClick={() => removeTask(task.id)} className="h-6 w-6 rounded-md text-slate-400 hover:text-red-600">
-                <Trash2 size={12} />
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => removeTask(task.id)}
+                className="h-8 w-8 rounded-md text-slate-400 hover:text-red-600"
+                title="Delete task"
+              >
+                <Trash2 size={14} />
               </Button>
             </div>
           </div>
@@ -1696,6 +1996,7 @@ function TaskCard({ task, statuses, groups, priorities, tags, statusColors, prio
                 <div className="h-1.5 rounded-full progress-fill" style={{ width: `${progress}%` }} />
               </div>
             </div>
+
             <div className="flex min-w-0 flex-wrap items-center gap-1 overflow-hidden">
               {task.tags.slice(0, 3).map((tag, tagIndex) => (
                 <span
@@ -1706,28 +2007,53 @@ function TaskCard({ task, statuses, groups, priorities, tags, statusColors, prio
                   #{tag}
                 </span>
               ))}
+
               {task.tags.length > 3 && <span className="text-[9px] text-slate-400">+{task.tags.length - 3}</span>}
               <span className="text-[10px] text-slate-500">{task.group}</span>
               <span className="text-[10px] text-slate-500">{formatDate(task.deadline)}</span>
-              {task.dependency && <span className="min-w-0 truncate text-[10px] text-slate-500" title={task.dependency}>Depends: {task.dependency}</span>}
+
+              {task.dependency && (
+                <span className="min-w-0 truncate text-[10px] text-slate-500" title={task.dependency}>
+                  Depends: {task.dependency}
+                </span>
+              )}
             </div>
           </div>
 
           {expanded && (
-            <div className="mt-2 grid grid-cols-1 gap-2 border-t border-slate-100 pt-2 lg:grid-cols-2" onClick={(event) => event.stopPropagation()}>
+            <div
+              className="mt-2 grid grid-cols-1 gap-2 border-t border-slate-100 pt-2 lg:grid-cols-2"
+              onClick={(event) => event.stopPropagation()}
+            >
               <div>
                 <div className="mb-1 flex items-center justify-between">
                   <div className="text-[10px] font-medium uppercase tracking-wide text-slate-400">Subtasks</div>
-                  <Button variant="outline" size="sm" onClick={(event) => { event.stopPropagation(); addSubtask(task.id); }} className="h-7 rounded-md px-2 text-[10px]">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      addSubtask(task.id);
+                    }}
+                    className="h-7 rounded-md px-2 text-[10px]"
+                  >
                     Add
                   </Button>
                 </div>
+
                 <div className="space-y-1">
                   {task.subtasks.length ? (
                     task.subtasks.map((subtask) => (
                       <label key={subtask.id} className="flex items-center gap-2 rounded-md bg-slate-50 px-2 py-1 text-[11px]">
-                        <input type="checkbox" checked={subtask.done} onClick={(event) => event.stopPropagation()} onChange={() => toggleSubtask(task.id, subtask.id)} />
-                        <span className={subtask.done ? "text-slate-400 line-through" : "text-slate-700"}>{subtask.title}</span>
+                        <input
+                          type="checkbox"
+                          checked={subtask.done}
+                          onClick={(event) => event.stopPropagation()}
+                          onChange={() => toggleSubtask(task.id, subtask.id)}
+                        />
+                        <span className={subtask.done ? "text-slate-400 line-through" : "text-slate-700"}>
+                          {subtask.title}
+                        </span>
                       </label>
                     ))
                   ) : (
@@ -1737,12 +2063,13 @@ function TaskCard({ task, statuses, groups, priorities, tags, statusColors, prio
               </div>
 
               <div className="space-y-1.5">
-                <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
                   <select
                     value={task.dependency}
                     onClick={(event) => event.stopPropagation()}
                     onChange={(event) => updateTask(task.id, { dependency: event.target.value })}
-                    className="h-6 w-full min-w-0 rounded-md border border-slate-200 bg-white px-1.5 text-[10px] leading-none shadow-sm"
+                    className="h-8 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2 text-xs leading-normal text-slate-900 shadow-sm"
+                    title="Dependency"
                   >
                     <option value="">No dependency</option>
                     {allTasks
@@ -1753,14 +2080,17 @@ function TaskCard({ task, statuses, groups, priorities, tags, statusColors, prio
                         </option>
                       ))}
                   </select>
+
                   <Input
                     type="date"
                     value={task.completedAt}
                     onClick={(event) => event.stopPropagation()}
                     onChange={(event) => updateTask(task.id, { completedAt: event.target.value })}
-                    className="h-7 rounded-md px-1 text-[10px]"
+                    className="h-8 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs leading-normal text-slate-900 shadow-sm"
+                    title="Actual completion date"
                   />
                 </div>
+
                 <Textarea
                   value={task.remarks}
                   onClick={(event) => event.stopPropagation()}
@@ -1768,19 +2098,28 @@ function TaskCard({ task, statuses, groups, priorities, tags, statusColors, prio
                   className="min-h-12 rounded-md text-[11px]"
                   placeholder="Add latest remark..."
                 />
+
                 <div className="flex flex-wrap gap-1">
-                  {tags.map((tag) => (
-                    <button
-                      key={tag}
-                      onClick={(event) => { event.stopPropagation(); toggleTaskTag(task.id, tag); }}
-                      className={classNames(
-                        "tag-chip rounded-full border px-1.5 py-0 text-[9px] font-medium transition",
-                        task.tags.includes(tag) ? tagChipClass(tags.indexOf(tag)) : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
-                      )}
-                    >
-                      #{tag}
-                    </button>
-                  ))}
+                  {tags.map((tag, tagIndex) => {
+                    const active = task.tags.includes(tag);
+
+                    return (
+                      <button
+                        key={tag}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          toggleTaskTag(task.id, tag);
+                        }}
+                        className={classNames(
+                          "tag-chip rounded-full border px-1.5 py-0 text-[9px] font-medium transition",
+                          active ? tagChipClass(tagIndex) : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+                        )}
+                        style={active ? tagChipStyle(tag, tagColors, tagIndex) : undefined}
+                      >
+                        #{tag}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -1791,14 +2130,14 @@ function TaskCard({ task, statuses, groups, priorities, tags, statusColors, prio
   );
 }
 
-function TableView({ statusColors, priorityColors, tagColors, tasks, statuses, groups, priorities, tags, tableGroupBy, setTableGroupBy, updateTask, removeTask, allTasks, tableColumns, openTaskPopup }) {
+function TableView({ statusColors, priorityColors, tagColors, tasks, statuses, groups, tags, tableGroupBy, setTableGroupBy, updateTask, removeTask, allTasks, tableColumns, openTaskPopup }) {
   const [sortConfig, setSortConfig] = useState({ key: "deadline", direction: "asc" });
 
   function getSortValue(task, key) {
     if (key === "task") return task.title.toLowerCase();
     if (key === "status") return statuses.indexOf(task.status);
     if (key === "group") return groups.indexOf(task.group);
-    if (key === "priority") return priorities.indexOf(task.priority);
+    if (key === "priority") return ["High", "Medium", "Low"].indexOf(task.priority);
     if (key === "tags") return task.tags.join(", ").toLowerCase();
     if (key === "deadline") return task.deadline || "9999-12-31";
     if (key === "completion") return task.completedAt || "9999-12-31";
@@ -1840,7 +2179,7 @@ function TableView({ statusColors, priorityColors, tagColors, tasks, statuses, g
       if (aValue > bValue) return sortConfig.direction === "asc" ? 1 : -1;
       return 0;
     });
-  }, [tasks, sortConfig, statuses, groups, priorities]);
+  }, [tasks, sortConfig, statuses, groups]);
 
   const groupedTableTasks = useMemo(() => {
     if (tableGroupBy === "None") {
@@ -1865,7 +2204,6 @@ function TableView({ statusColors, priorityColors, tagColors, tasks, statuses, g
     let order = [];
     if (tableGroupBy === "Group") order = groups;
     if (tableGroupBy === "Status") order = statuses;
-    if (tableGroupBy === "Priority") order = priorities;
     if (tableGroupBy === "Tag") order = tags.map((tag) => `#${tag}`);
 
     const entries = Object.entries(bucket).map(([title, tasks]) => ({ title, tasks }));
@@ -1876,7 +2214,7 @@ function TableView({ statusColors, priorityColors, tagColors, tasks, statuses, g
       return entries.sort((a, b) => order.indexOf(a.title) - order.indexOf(b.title));
     }
     return entries;
-  }, [sortedTasks, tableGroupBy, groups, statuses, priorities, tags]);
+  }, [sortedTasks, tableGroupBy, groups, statuses, tags]);
 
   return (
     <div className="space-y-2">
@@ -2004,9 +2342,9 @@ function TableView({ statusColors, priorityColors, tagColors, tasks, statuses, g
                               onChange={(event) => updateTask(task.id, { priority: event.target.value })}
                               className="h-7 w-full min-w-0 rounded-md border border-slate-200 bg-white px-1.5 text-[11px]"
                             >
-                              {priorities.map((priority) => (
-                                <option key={priority}>{priority}</option>
-                              ))}
+                              <option>High</option>
+                              <option>Medium</option>
+                              <option>Low</option>
                             </select>
                           </td>
                         )}
@@ -2332,7 +2670,7 @@ function CalendarView({ statusColors, priorityColors, tasks, openTaskPopup, cale
   );
 }
 
-function GanttView({ statusColors, priorityColors, tasks, groups, statuses, priorities, tags, ganttGroupBy, setGanttGroupBy, updateTask, allTasks, ganttColumns, toggleGanttColumn, openTaskPopup }) {
+function GanttView({ statusColors, priorityColors, tasks, groups, statuses, tags, ganttGroupBy, setGanttGroupBy, updateTask, allTasks, ganttColumns, toggleGanttColumn, openTaskPopup }) {
   const sorted = [...tasks].sort((a, b) => getTaskStartDate(a).localeCompare(getTaskStartDate(b)));
   const safeTasks = sorted.length ? sorted : [];
   const start = safeTasks.length
@@ -2393,7 +2731,6 @@ function GanttView({ statusColors, priorityColors, tasks, groups, statuses, prio
     let order = [];
     if (ganttGroupBy === "Group") order = groups;
     if (ganttGroupBy === "Status") order = statuses;
-    if (ganttGroupBy === "Priority") order = priorities;
     if (ganttGroupBy === "Tag") order = tags.map((tag) => `#${tag}`);
 
     const entries = Object.entries(bucket).map(([title, tasks]) => ({ title, tasks }));
@@ -2404,7 +2741,7 @@ function GanttView({ statusColors, priorityColors, tasks, groups, statuses, prio
       return entries.sort((a, b) => order.indexOf(a.title) - order.indexOf(b.title));
     }
     return entries;
-  }, [sorted, ganttGroupBy, groups, statuses, priorities, tags]);
+  }, [sorted, ganttGroupBy, groups, statuses, tags]);
 
   function dayOffset(dateString) {
     return Math.max(0, Math.round((new Date(`${dateString}T00:00:00`) - start) / 86400000));
@@ -2728,7 +3065,7 @@ function GanttView({ statusColors, priorityColors, tasks, groups, statuses, prio
   );
 }
 
-function TaskDetailModal({ statusColors, priorityColors, tagColors, task, statuses, groups, priorities, tags, allTasks, updateTask, toggleSubtask, addSubtask, removeTask, onClose }) {
+function TaskDetailModal({ statusColors, priorityColors, tagColors, task, statuses, groups, tags, allTasks, updateTask, toggleSubtask, addSubtask, removeTask, onClose }) {
   const [draft, setDraft] = useState(task || null);
 
   useEffect(() => {
@@ -2778,19 +3115,39 @@ function TaskDetailModal({ statusColors, priorityColors, tagColors, task, status
         </div>
 
         <div className="max-h-[calc(92vh-62px)] overflow-y-auto p-4">
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1.3fr_0.7fr]">
-            <div className="space-y-3">
-              <div>
-                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Task title</label>
-                <Input value={draft.title} onChange={(e) => updateDraft({ title: e.target.value })} className="rounded-xl" />
+          <div className="grid min-w-0 grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1.3fr)_minmax(360px,0.7fr)]">
+            <div className="min-w-0 space-y-3">
+              <div className="min-w-0">
+                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                  Task title
+                </label>
+                <Input
+                  value={draft.title}
+                  onChange={(e) => updateDraft({ title: e.target.value })}
+                  className="h-10 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none focus:border-slate-400"
+                />
               </div>
-              <div>
-                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Description</label>
-                <Textarea value={draft.description} onChange={(e) => updateDraft({ description: e.target.value })} className="min-h-20 rounded-xl text-sm" />
+
+              <div className="min-w-0">
+                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                  Description
+                </label>
+                <Textarea
+                  value={draft.description}
+                  onChange={(e) => updateDraft({ description: e.target.value })}
+                  className="min-h-[96px] w-full min-w-0 resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-400"
+                />
               </div>
-              <div>
-                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Remark / latest update</label>
-                <Textarea value={draft.remarks} onChange={(e) => updateDraft({ remarks: e.target.value })} className="min-h-24 rounded-xl text-sm" />
+
+              <div className="min-w-0">
+                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                  Remark / latest update
+                </label>
+                <Textarea
+                  value={draft.remarks}
+                  onChange={(e) => updateDraft({ remarks: e.target.value })}
+                  className="min-h-[140px] w-full min-w-0 resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-400"
+                />
               </div>
 
               <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
@@ -2822,9 +3179,9 @@ function TaskDetailModal({ statusColors, priorityColors, tagColors, task, status
                 <div>
                   <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Priority</label>
                   <select value={draft.priority} onChange={(e) => updateDraft({ priority: e.target.value })} className="h-9 w-full rounded-xl border border-slate-200 bg-white px-2 text-sm">
-                    {priorities.map((priority) => (
-                      <option key={priority}>{priority}</option>
-                    ))}
+                    <option>High</option>
+                    <option>Medium</option>
+                    <option>Low</option>
                   </select>
                 </div>
                 <div>
@@ -2895,46 +3252,103 @@ function TaskDetailModal({ statusColors, priorityColors, tagColors, task, status
   );
 }
 
-function MasterDataView({
-  groups,
-  tags,
-  statuses,
-  priorities,
-  statusColors,
-  priorityColors,
-  tagColors,
-  updateStatusColor,
-  updatePriorityColor,
-  updateTagColor,
-  defaultGroupMode,
-  applyDefaultGroupMode,
-  newGroup,
-  setNewGroup,
-  addGroup,
-  newTag,
-  setNewTag,
-  addTag,
-  newStatus,
-  setNewStatus,
-  addStatus,
-  newPriority,
-  setNewPriority,
-  addPriority,
-  masterSearch,
-  updateMasterSearch,
-  masterVisibleCount,
-  showMoreMasterItems,
-  editingMaster,
-  editingMasterValue,
-  setEditingMasterValue,
-  startEditMaster,
-  cancelEditMaster,
-  renameMasterItem,
-  deleteMasterItem,
-  reorderList,
-  tableColumns,
-  toggleTableColumn,
-}) {
+
+function UserManagementView({ currentProfile }) {
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState("");
+  const isAdmin = currentProfile?.role === "admin";
+  const roles = ["admin", "director", "manager", "member"];
+
+  async function loadUsers() {
+    setLoading(true);
+    const { data, error } = await supabase.from("user_profiles").select("*").order("created_at", { ascending: false });
+    if (error) setMessage(error.message);
+    else setUsers(data || []);
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    loadUsers();
+  }, []);
+
+  async function updateUser(userId, patch) {
+    if (!isAdmin) return;
+    const { error } = await supabase.from("user_profiles").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", userId);
+    if (error) setMessage(error.message);
+    else {
+      setMessage("User rights updated.");
+      loadUsers();
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <Card className="master-panel rounded-xl border-slate-200 shadow-sm">
+        <CardContent className="p-3">
+          <h2 className="panel-title text-base font-semibold">User Management</h2>
+          <p className="text-xs text-slate-500">Visible only for Admin and Director. Role editing is available only for Admin.</p>
+        </CardContent>
+      </Card>
+
+      <Card className="master-panel rounded-xl border-slate-200 shadow-sm">
+        <CardContent className="p-3">
+          {loading ? (
+            <div className="py-8 text-center text-sm text-slate-500">Loading users...</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[720px] text-left text-xs">
+                <thead className="border-b border-slate-200 text-[10px] uppercase tracking-wide text-slate-400">
+                  <tr>
+                    <th className="px-2 py-2">User</th>
+                    <th className="px-2 py-2">Role</th>
+                    <th className="px-2 py-2">Status</th>
+                    <th className="px-2 py-2">Created</th>
+                    <th className="px-2 py-2">Rights</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.map((user) => (
+                    <tr key={user.id} className="border-b border-slate-100">
+                      <td className="px-2 py-2">
+                        <div className="font-semibold text-slate-900">{user.full_name || "Unnamed user"}</div>
+                        <div className="text-slate-500">{user.email}</div>
+                      </td>
+                      <td className="px-2 py-2">
+                        {isAdmin ? (
+                          <select value={user.role} onChange={(event) => updateUser(user.id, { role: event.target.value })} className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs">
+                            {roles.map((role) => <option key={role}>{role}</option>)}
+                          </select>
+                        ) : (
+                          <span className="rounded-full bg-slate-100 px-2 py-1 font-semibold capitalize text-slate-700">{user.role}</span>
+                        )}
+                      </td>
+                      <td className="px-2 py-2">
+                        {isAdmin ? (
+                          <select value={user.is_active ? "active" : "disabled"} onChange={(event) => updateUser(user.id, { is_active: event.target.value === "active" })} className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs">
+                            <option value="active">Active</option>
+                            <option value="disabled">Disabled</option>
+                          </select>
+                        ) : (
+                          <span>{user.is_active ? "Active" : "Disabled"}</span>
+                        )}
+                      </td>
+                      <td className="px-2 py-2 text-slate-500">{formatDate((user.created_at || "").slice(0, 10))}</td>
+                      <td className="px-2 py-2 text-slate-500">{isAdmin ? "Editable" : "Read only"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {message && <div className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">{message}</div>}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function MasterDataView({ groups, tags, statuses, statusColors, priorityColors, tagColors, updateStatusColor, updatePriorityColor, updateTagColor, defaultGroupMode, applyDefaultGroupMode, newGroup, setNewGroup, addGroup, newTag, setNewTag, addTag, reorderList, tableColumns, toggleTableColumn }) {
   const groupingOptions = ["None", "Group", "Status", "Priority", "Deadline", "Tag"];
 
   return (
@@ -2943,12 +3357,9 @@ function MasterDataView({
         <CardContent className="p-3">
           <h2 className="panel-title mb-1 text-base font-semibold">Default View Settings</h2>
           <p className="mb-2 text-xs text-slate-500">Choose the default grouping mode for Home, Kanban, and Table views.</p>
-
           <div className="grid grid-cols-1 gap-2 md:grid-cols-[220px_1fr] md:items-center">
             <div>
-              <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-slate-400">
-                Default group mode
-              </label>
+              <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-slate-400">Default group mode</label>
               <select
                 value={defaultGroupMode}
                 onChange={(event) => applyDefaultGroupMode(event.target.value)}
@@ -2959,11 +3370,8 @@ function MasterDataView({
                 ))}
               </select>
             </div>
-
             <div className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
-              Current default: <span className="font-semibold text-slate-900">{defaultGroupMode}</span>. Use{" "}
-              <span className="font-semibold">Group</span> for project-wise work, or{" "}
-              <span className="font-semibold">Deadline</span> for date-wise planning.
+              Current default: <span className="font-semibold text-slate-900">{defaultGroupMode}</span>. Use <span className="font-semibold">Group</span> for project-wise work, or <span className="font-semibold">Deadline</span> for date-wise planning.
             </div>
           </div>
         </CardContent>
@@ -2973,7 +3381,6 @@ function MasterDataView({
         <CardContent className="p-3">
           <h2 className="panel-title mb-1 text-base font-semibold">Table Column Settings</h2>
           <p className="mb-2 text-xs text-slate-500">Select which columns should be visible in Table view.</p>
-
           <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-6">
             {tableColumnOptions.map((column) => (
               <label key={column.key} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs shadow-sm">
@@ -2990,357 +3397,115 @@ function MasterDataView({
         </CardContent>
       </Card>
 
-      <MasterCrudPanel
-        title="Groups / Projects"
-        type="groups"
-        items={groups}
-        newValue={newGroup}
-        setNewValue={setNewGroup}
-        addItem={addGroup}
-        searchValue={masterSearch.groups}
-        updateSearch={updateMasterSearch}
-        visibleCount={masterVisibleCount.groups}
-        showMore={showMoreMasterItems}
-        reorderList={reorderList}
-        editingMaster={editingMaster}
-        editingMasterValue={editingMasterValue}
-        setEditingMasterValue={setEditingMasterValue}
-        startEditMaster={startEditMaster}
-        cancelEditMaster={cancelEditMaster}
-        renameMasterItem={renameMasterItem}
-        deleteMasterItem={deleteMasterItem}
-        placeholder="New project"
-        searchPlaceholder="Search projects..."
-      />
-
-      <MasterCrudPanel
-        title="Tags"
-        type="tags"
-        items={tags}
-        newValue={newTag}
-        setNewValue={setNewTag}
-        addItem={addTag}
-        searchValue={masterSearch.tags}
-        updateSearch={updateMasterSearch}
-        visibleCount={masterVisibleCount.tags}
-        showMore={showMoreMasterItems}
-        reorderList={reorderList}
-        editingMaster={editingMaster}
-        editingMasterValue={editingMasterValue}
-        setEditingMasterValue={setEditingMasterValue}
-        startEditMaster={startEditMaster}
-        cancelEditMaster={cancelEditMaster}
-        renameMasterItem={renameMasterItem}
-        deleteMasterItem={deleteMasterItem}
-        placeholder="New tag"
-        searchPlaceholder="Search tags..."
-        renderItem={(tag) => `#${tag}`}
-        getItemClass={() => "tag-chip"}
-        getItemStyle={(tag, index) => tagChipStyle(tag, tagColors, index)}
-        renderRight={(tag) => (
-          <input
-            type="color"
-            value={tagColors[tag] || "#e5e5e5"}
-            onChange={(event) => updateTagColor(tag, event.target.value)}
-            className="h-6 w-8 cursor-pointer rounded border border-slate-200 bg-transparent p-0"
-            title="Tag color"
+      <Card className="master-panel rounded-xl border-slate-200 shadow-sm">
+        <CardContent className="p-3">
+          <h2 className="panel-title mb-2 text-base font-semibold">Groups / Projects</h2>
+          <div className="mb-2 flex gap-1.5">
+            <Input value={newGroup} onChange={(e) => setNewGroup(e.target.value)} placeholder="New group" className="h-8 rounded-xl text-xs" />
+            <Button onClick={addGroup} className="h-8 rounded-xl px-3 text-xs">Add</Button>
+          </div>
+          <SortableMasterList
+            type="groups"
+            items={groups}
+            reorderList={reorderList}
+            renderItem={(group) => group}
           />
-        )}
-      />
+        </CardContent>
+      </Card>
 
-      <MasterCrudPanel
-        title="Statuses"
-        type="statuses"
-        items={statuses}
-        newValue={newStatus}
-        setNewValue={setNewStatus}
-        addItem={addStatus}
-        searchValue={masterSearch.statuses}
-        updateSearch={updateMasterSearch}
-        visibleCount={masterVisibleCount.statuses}
-        showMore={showMoreMasterItems}
-        reorderList={reorderList}
-        editingMaster={editingMaster}
-        editingMasterValue={editingMasterValue}
-        setEditingMasterValue={setEditingMasterValue}
-        startEditMaster={startEditMaster}
-        cancelEditMaster={cancelEditMaster}
-        renameMasterItem={renameMasterItem}
-        deleteMasterItem={deleteMasterItem}
-        placeholder="New status"
-        searchPlaceholder="Search statuses..."
-        description="Drag statuses to control Status group order in Home, Kanban, and Table."
-        getItemClass={(status) => statusBadgeClass(status)}
-        getItemStyle={(status) => statusChipStyle(status, statusColors)}
-        renderRight={(status) => (
-          <input
-            type="color"
-            value={statusColors[status] || "#e5e5e5"}
-            onChange={(event) => updateStatusColor(status, event.target.value)}
-            className="h-6 w-8 cursor-pointer rounded border border-slate-200 bg-transparent p-0"
-            title="Status color"
+      <Card className="master-panel rounded-xl border-slate-200 shadow-sm">
+        <CardContent className="p-3">
+          <h2 className="panel-title mb-2 text-base font-semibold">Tags</h2>
+          <div className="mb-2 flex gap-1.5">
+            <Input value={newTag} onChange={(e) => setNewTag(e.target.value)} placeholder="New tag" className="h-8 rounded-xl text-xs" />
+            <Button onClick={addTag} className="h-8 rounded-xl px-3 text-xs">Add</Button>
+          </div>
+          <SortableMasterList
+            type="tags"
+            items={tags}
+            reorderList={reorderList}
+            renderItem={(tag) => `#${tag}`}
+            getItemClass={() => "tag-chip"}
+            getItemStyle={(tag, index) => tagChipStyle(tag, tagColors, index)}
+            renderRight={(tag) => (
+              <input type="color" value={tagColors[tag] || "#e5e5e5"} onChange={(event) => updateTagColor(tag, event.target.value)} className="h-6 w-8 cursor-pointer rounded border border-slate-200 bg-transparent p-0" title="Tag color" />
+            )}
           />
-        )}
-      />
+        </CardContent>
+      </Card>
 
-      <MasterCrudPanel
-        title="Priorities"
-        type="priorities"
-        items={priorities}
-        newValue={newPriority}
-        setNewValue={setNewPriority}
-        addItem={addPriority}
-        searchValue={masterSearch.priorities}
-        updateSearch={updateMasterSearch}
-        visibleCount={masterVisibleCount.priorities}
-        showMore={showMoreMasterItems}
-        reorderList={reorderList}
-        editingMaster={editingMaster}
-        editingMasterValue={editingMasterValue}
-        setEditingMasterValue={setEditingMasterValue}
-        startEditMaster={startEditMaster}
-        cancelEditMaster={cancelEditMaster}
-        renameMasterItem={renameMasterItem}
-        deleteMasterItem={deleteMasterItem}
-        placeholder="New priority"
-        searchPlaceholder="Search priorities..."
-        description="Create, edit, delete, reorder, and color task priorities."
-        getItemClass={(priority) => priorityBadgeClass(priority)}
-        getItemStyle={(priority) => priorityChipStyle(priority, priorityColors)}
-        renderRight={(priority) => (
-          <input
-            type="color"
-            value={priorityColors[priority] || "#e5e5e5"}
-            onChange={(event) => updatePriorityColor(priority, event.target.value)}
-            className="h-6 w-8 cursor-pointer rounded border border-slate-200 bg-transparent p-0"
-            title="Priority color"
+      <Card className="master-panel rounded-xl border-slate-200 shadow-sm">
+        <CardContent className="p-3">
+          <h2 className="panel-title mb-2 text-base font-semibold">Statuses</h2>
+          <p className="mb-2 text-xs text-slate-500">Drag statuses to control Status group order in Home, Kanban, and Table.</p>
+          <SortableMasterList
+            type="statuses"
+            items={statuses}
+            reorderList={reorderList}
+            renderItem={(status) => status}
+            getItemClass={(status) => statusBadgeClass(status)}
+            getItemStyle={(status) => statusChipStyle(status, statusColors)}
+            renderRight={(status) => (
+              <input type="color" value={statusColors[status] || "#e5e5e5"} onChange={(event) => updateStatusColor(status, event.target.value)} className="h-6 w-8 cursor-pointer rounded border border-slate-200 bg-transparent p-0" title="Status color" />
+            )}
           />
-        )}
-      />
+        </CardContent>
+      </Card>
+
+      <Card className="master-panel rounded-xl border-slate-200 shadow-sm">
+        <CardContent className="p-3">
+          <h2 className="panel-title mb-2 text-base font-semibold">Priorities</h2>
+          <p className="mb-2 text-xs text-slate-500">Set custom colors for priority chips.</p>
+          <div className="space-y-1.5">
+            {priorityOptions.map((priority) => (
+              <div key={priority} className="master-list-item flex items-center justify-between rounded-xl border px-2 py-1.5 text-xs shadow-sm" style={priorityChipStyle(priority, priorityColors)}>
+                <span className="font-semibold">{priority}</span>
+                <input type="color" value={priorityColors[priority] || "#e5e5e5"} onChange={(event) => updatePriorityColor(priority, event.target.value)} className="h-6 w-8 cursor-pointer rounded border border-slate-200 bg-transparent p-0" title="Priority color" />
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
 
-function MasterCrudPanel({
-  title,
-  type,
-  items,
-  newValue,
-  setNewValue,
-  addItem,
-  searchValue,
-  updateSearch,
-  visibleCount,
-  showMore,
-  reorderList,
-  editingMaster,
-  editingMasterValue,
-  setEditingMasterValue,
-  startEditMaster,
-  cancelEditMaster,
-  renameMasterItem,
-  deleteMasterItem,
-  placeholder,
-  searchPlaceholder,
-  description,
-  renderItem,
-  getItemClass,
-  getItemStyle,
-  renderRight,
-}) {
-  const filteredItems = items.filter((item) =>
-    item.toLowerCase().includes((searchValue || "").toLowerCase())
-  );
-
-  const visibleItems = filteredItems.slice(0, visibleCount);
-  const hasMore = filteredItems.length > visibleItems.length;
+function SortableMasterList({ type, items, reorderList, renderItem, getItemClass, getItemStyle, renderRight }) {
+  const [dragIndex, setDragIndex] = useState(null);
 
   return (
-    <Card className="master-panel rounded-xl border-slate-200 shadow-sm">
-      <CardContent className="p-3">
-        <div className="mb-2 flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <h2 className="panel-title text-base font-semibold">{title}</h2>
-            <p className="text-xs text-slate-500">
-              {description || `${items.length} items`}
-            </p>
+    <div className="space-y-1.5">
+      {items.map((item, index) => (
+        <div
+          key={item}
+          draggable
+          onDragStart={() => setDragIndex(index)}
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={() => {
+            reorderList(type, dragIndex, index);
+            setDragIndex(null);
+          }}
+          onDragEnd={() => setDragIndex(null)}
+          className={classNames(
+            "master-list-item flex cursor-grab items-center justify-between rounded-xl border bg-white px-2 py-1.5 text-xs shadow-sm transition active:cursor-grabbing",
+            dragIndex === index ? "scale-[0.99] border-slate-400 opacity-60" : "border-slate-200 hover:bg-slate-50",
+            getItemClass ? getItemClass(item, index) : ""
+          )}
+          style={getItemStyle ? getItemStyle(item, index) : undefined}
+          title="Drag to reorder"
+        >
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="master-list-index flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[10px] font-semibold text-slate-500">
+              {index + 1}
+            </span>
+            <span className="master-list-name min-w-0 truncate font-medium">{renderItem(item)}</span>
           </div>
-          <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-500">
-            {items.length}
-          </span>
+          <div className="flex shrink-0 items-center gap-2">
+            {renderRight ? renderRight(item, index) : null}
+            <span className="drag-label text-[10px] text-slate-400">drag</span>
+          </div>
         </div>
-
-        <div className="mb-2 grid grid-cols-[minmax(0,1fr)_74px] gap-1.5">
-          <Input
-            value={newValue}
-            onChange={(e) => setNewValue(e.target.value)}
-            placeholder={placeholder}
-            className="h-8 min-w-0 rounded-xl text-xs"
-            onKeyDown={(event) => {
-              if (event.key === "Enter") addItem();
-            }}
-          />
-          <Button onClick={addItem} className="h-8 rounded-xl px-3 text-xs">
-            Add
-          </Button>
-        </div>
-
-        <Input
-          value={searchValue || ""}
-          onChange={(e) => updateSearch(type, e.target.value)}
-          placeholder={searchPlaceholder}
-          className="mb-2 h-8 rounded-xl text-xs"
-        />
-
-        <SortableMasterList
-          type={type}
-          items={visibleItems}
-          allItems={items}
-          reorderList={reorderList}
-          renderItem={renderItem}
-          getItemClass={getItemClass}
-          getItemStyle={getItemStyle}
-          renderRight={renderRight}
-          editingMaster={editingMaster}
-          editingMasterValue={editingMasterValue}
-          setEditingMasterValue={setEditingMasterValue}
-          startEditMaster={startEditMaster}
-          cancelEditMaster={cancelEditMaster}
-          renameMasterItem={renameMasterItem}
-          deleteMasterItem={deleteMasterItem}
-        />
-
-        {hasMore && (
-          <Button
-            variant="outline"
-            onClick={() => showMore(type)}
-            className="mt-2 h-8 w-full rounded-xl text-xs"
-          >
-            Show more {filteredItems.length - visibleItems.length}
-          </Button>
-        )}
-
-        {!filteredItems.length && (
-          <div className="rounded-xl border border-dashed border-slate-200 px-3 py-4 text-center text-xs text-slate-400">
-            No matching item found.
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function SortableMasterList({
-  type,
-  items,
-  allItems,
-  reorderList,
-  renderItem,
-  getItemClass,
-  getItemStyle,
-  renderRight,
-  editingMaster,
-  editingMasterValue,
-  setEditingMasterValue,
-  startEditMaster,
-  cancelEditMaster,
-  renameMasterItem,
-  deleteMasterItem,
-}) {
-  const [dragItem, setDragItem] = useState(null);
-
-  return (
-    <div className="max-h-[360px] space-y-1.5 overflow-y-auto pr-1">
-      {items.map((item, index) => {
-        const actualIndex = allItems.indexOf(item);
-        const isEditing = editingMaster?.type === type && editingMaster?.oldName === item;
-
-        return (
-          <div
-            key={item}
-            draggable={!isEditing}
-            onDragStart={() => setDragItem(item)}
-            onDragOver={(event) => event.preventDefault()}
-            onDrop={() => {
-              if (!dragItem || dragItem === item) return;
-              reorderList(type, allItems.indexOf(dragItem), actualIndex);
-              setDragItem(null);
-            }}
-            onDragEnd={() => setDragItem(null)}
-            className={classNames(
-              "master-list-item flex cursor-grab items-center justify-between rounded-xl border bg-white px-2 py-1.5 text-xs shadow-sm transition active:cursor-grabbing",
-              dragItem === item ? "scale-[0.99] border-slate-400 opacity-60" : "border-slate-200 hover:bg-slate-50",
-              getItemClass ? getItemClass(item, index) : ""
-            )}
-            style={getItemStyle ? getItemStyle(item, index) : undefined}
-            title="Drag to reorder"
-          >
-            <div className="flex min-w-0 flex-1 items-center gap-2">
-              <span className="master-list-index flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[10px] font-semibold text-slate-500">
-                {actualIndex + 1}
-              </span>
-
-              {isEditing ? (
-                <input
-                  value={editingMasterValue}
-                  onChange={(event) => setEditingMasterValue(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") renameMasterItem(type, item, editingMasterValue);
-                    if (event.key === "Escape") cancelEditMaster();
-                  }}
-                  className="h-7 min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-900"
-                  autoFocus
-                />
-              ) : (
-                <span className="master-list-name min-w-0 truncate font-medium">
-                  {renderItem ? renderItem(item, index) : item}
-                </span>
-              )}
-            </div>
-
-            <div className="flex shrink-0 items-center gap-1.5">
-              {renderRight ? renderRight(item, index) : null}
-
-              {isEditing ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => renameMasterItem(type, item, editingMasterValue)}
-                    className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-700 hover:bg-slate-50"
-                  >
-                    Save
-                  </button>
-                  <button
-                    type="button"
-                    onClick={cancelEditMaster}
-                    className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] text-slate-500 hover:bg-slate-50"
-                  >
-                    Cancel
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => startEditMaster(type, item)}
-                    className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] text-slate-500 hover:bg-slate-50"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => deleteMasterItem(type, item)}
-                    className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] text-red-500 hover:bg-red-50"
-                  >
-                    Delete
-                  </button>
-                  <span className="drag-label text-[10px] text-slate-400">drag</span>
-                </>
-              )}
-            </div>
-          </div>
-        );
-      })}
+      ))}
     </div>
   );
 }
