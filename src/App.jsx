@@ -2232,7 +2232,7 @@ function TaskCard({ task, statuses, groups, priorities = ["High", "Medium", "Low
 
           {expanded && (
             <div
-              className="mt-2 grid grid-cols-1 gap-2 border-t border-slate-100 pt-2 lg:grid-cols-2"
+              className="mt-2 grid grid-cols-1 gap-2 border-t border-slate-100 pt-2"
               onClick={(event) => event.stopPropagation()}
             >
               <div>
@@ -2291,7 +2291,7 @@ function TaskCard({ task, statuses, groups, priorities = ["High", "Medium", "Low
                 </div>
               </div>
 
-              <div className="space-y-1.5">
+              <div className="grid grid-cols-1 gap-2 lg:grid-cols-[minmax(260px,0.55fr)_minmax(420px,1fr)]">
                 <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
                   <select
                     value={task.dependency}
@@ -2324,7 +2324,7 @@ function TaskCard({ task, statuses, groups, priorities = ["High", "Medium", "Low
                   value={task.remarks}
                   onClick={(event) => event.stopPropagation()}
                   onChange={(event) => updateTask(task.id, { remarks: event.target.value })}
-                  className="min-h-12 rounded-md text-[11px]"
+                  className="min-h-[96px] w-full resize-y rounded-md text-[11px]"
                   placeholder="Add latest remark..."
                 />
 
