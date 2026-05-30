@@ -921,6 +921,7 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
   const [newGroup, setNewGroup] = useState("");
   const [newTag, setNewTag] = useState("");
   const [homeMinimalMode, setHomeMinimalMode] = useState(false);
+  const [hideDoneTasks, setHideDoneTasks] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [homeFiltersOpen, setHomeFiltersOpen] = useState(false);
   const [tableColumns, setTableColumns] = useState(() =>
@@ -957,6 +958,9 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
   const openTasks = filteredTasks.filter((task) => task.status !== "Done");
   const doneTasks = tasks.filter((task) => task.status === "Done");
   const overdueTasks = tasks.filter((task) => task.status !== "Done" && task.deadline < todayIso());
+  const visibleFilteredTasks = hideDoneTasks
+    ? filteredTasks.filter((task) => task.status !== "Done")
+    : filteredTasks;
 
   useEffect(() => {
     let ignore = false;
@@ -992,6 +996,7 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
         if (state.kanbanBy) setKanbanBy(state.kanbanBy);
         if (state.tableColumns) setTableColumns(state.tableColumns);
         if (typeof state.homeMinimalMode === "boolean") setHomeMinimalMode(state.homeMinimalMode);
+        if (typeof state.hideDoneTasks === "boolean") setHideDoneTasks(state.hideDoneTasks);
         if (typeof state.sidebarCollapsed === "boolean") setSidebarCollapsed(state.sidebarCollapsed);
         if (state.displayScale) setDisplayScale(state.displayScale);
         if (typeof state.darkMode === "boolean") setDarkMode(state.darkMode);
@@ -1024,6 +1029,7 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
         kanbanBy,
         tableColumns,
         homeMinimalMode,
+        hideDoneTasks,
         sidebarCollapsed,
         displayScale,
         darkMode,
@@ -1038,7 +1044,7 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
       setCloudStatus(error ? `Cloud save failed: ${error.message}` : "Saved to cloud");
     }, 600);
     return () => window.clearTimeout(handle);
-  }, [cloudReady, session?.user?.id, tasks, statuses, groups, tags, priorities, defaultGroupMode, homeGroupBy, tableGroupBy, ganttGroupBy, calendarGroupBy, ganttColumns, kanbanBy, tableColumns, homeMinimalMode, sidebarCollapsed, displayScale, darkMode, statusColors, priorityColors, tagColors]);
+  }, [cloudReady, session?.user?.id, tasks, statuses, groups, tags, priorities, defaultGroupMode, homeGroupBy, tableGroupBy, ganttGroupBy, calendarGroupBy, ganttColumns, kanbanBy, tableColumns, homeMinimalMode, hideDoneTasks, sidebarCollapsed, displayScale, darkMode, statusColors, priorityColors, tagColors]);
 
 
   const canManageUsers = ["admin", "director"].includes(profile?.role);
@@ -1485,10 +1491,10 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
     if (kanbanBy === "Status") return statuses;
     if (kanbanBy === "Group") return groups;
     if (kanbanBy === "Priority") return priorities;
-    if (kanbanBy === "Deadline") return [...new Set(filteredTasks.map((task) => task.deadline))].sort();
+    if (kanbanBy === "Deadline") return [...new Set(visibleFilteredTasks.map((task) => task.deadline))].sort();
     if (kanbanBy === "Tag") return tags;
     return statuses;
-  }, [kanbanBy, statuses, groups, tags, priorities, filteredTasks]);
+  }, [kanbanBy, statuses, groups, tags, priorities, visibleFilteredTasks]);
 
   return (
     <div className={classNames("min-h-screen transition-colors", darkMode ? "bg-neutral-950 text-neutral-100 dark" : "bg-slate-50 text-slate-900")}>
@@ -1570,6 +1576,27 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
                       className={classNames(
                         "absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition",
                         homeMinimalMode ? "left-4" : "left-0.5"
+                      )}
+                    />
+                  </button>
+                </label>
+              )}
+              {["Kanban", "Table", "Calendar", "Gantt"].includes(activeView) && (
+                <label className={classNames("flex shrink-0 items-center gap-2 rounded-full border px-2.5 py-1 text-[11px] font-medium shadow-sm", darkMode ? "border-neutral-700 bg-neutral-900 text-neutral-300" : "border-slate-200 bg-white text-slate-600")}>
+                  <span>{hideDoneTasks ? "Done hidden" : "Done visible"}</span>
+                  <button
+                    type="button"
+                    onClick={() => setHideDoneTasks(!hideDoneTasks)}
+                    className={classNames(
+                      "relative h-4 w-8 rounded-full transition",
+                      hideDoneTasks ? "bg-slate-900" : "bg-slate-200"
+                    )}
+                    title="Hide or show Done tasks"
+                  >
+                    <span
+                      className={classNames(
+                        "absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition",
+                        hideDoneTasks ? "left-4" : "left-0.5"
                       )}
                     />
                   </button>
@@ -1685,7 +1712,7 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
               columns={kanbanColumns}
               statuses={statuses}
               groups={groups}
-              tasks={filteredTasks}
+              tasks={visibleFilteredTasks}
               updateTask={updateTask}
             />
           )}
@@ -1695,7 +1722,7 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
               statusColors={statusColors}
               priorityColors={priorityColors}
               tagColors={tagColors}
-              tasks={filteredTasks}
+              tasks={visibleFilteredTasks}
               statuses={statuses}
               groups={groups}
               priorities={priorities}
@@ -1715,7 +1742,7 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
             <CalendarView
               statusColors={statusColors}
               priorityColors={priorityColors}
-              tasks={filteredTasks}
+              tasks={visibleFilteredTasks}
               openTaskPopup={openTaskPopup}
               calendarGroupBy={calendarGroupBy}
               setCalendarGroupBy={setCalendarGroupBy}
@@ -1725,7 +1752,7 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
             <GanttView
               statusColors={statusColors}
               priorityColors={priorityColors}
-              tasks={filteredTasks}
+              tasks={visibleFilteredTasks}
               groups={groups}
               statuses={statuses}
               priorities={priorities}
