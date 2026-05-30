@@ -1654,6 +1654,8 @@ function HomeView(props) {
     updateTask,
     toggleSubtask,
     addSubtask,
+    updateSubtask,
+    removeSubtask,
     removeTask,
     toggleTaskTag,
     allTasks,
@@ -2079,7 +2081,7 @@ function CompactDatePicker({ value, onChange, title = "Deadline" }) {
   );
 }
 
-function TaskCard({ task, statuses, groups, priorities = ["High", "Medium", "Low"], tags, statusColors, priorityColors, tagColors, updateTask, toggleSubtask, addSubtask, updateSubtask, removeSubtask, removeTask, toggleTaskTag, allTasks, openTaskPopup }) {
+function TaskCard({ task, statuses, groups, priorities = ["High", "Medium", "Low"], tags, statusColors, priorityColors, tagColors, updateTask, toggleSubtask, addSubtask, updateSubtask = () => {}, removeSubtask = () => {}, removeTask, toggleTaskTag, allTasks, openTaskPopup }) {
   const progress = getProgress(task);
   const [expanded, setExpanded] = useState(false);
   const taskPriorityAccent = {
@@ -3293,7 +3295,7 @@ function GanttView({ statusColors, priorityColors, tasks, groups, statuses, prio
   );
 }
 
-function TaskDetailModal({ statusColors, priorityColors, tagColors, task, statuses, groups, priorities = ["High", "Medium", "Low"], tags, allTasks, updateTask, toggleSubtask, addSubtask, updateSubtask, removeSubtask, removeTask, onClose }) {
+function TaskDetailModal({ statusColors, priorityColors, tagColors, task, statuses, groups, priorities = ["High", "Medium", "Low"], tags, allTasks, updateTask, toggleSubtask, addSubtask, updateSubtask = () => {}, removeSubtask = () => {}, removeTask, onClose }) {
   const [draft, setDraft] = useState(task || null);
 
   useEffect(() => {
