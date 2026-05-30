@@ -684,6 +684,23 @@ export default function NoteTaskAppV1() {
   const [statuses, setStatuses] = useState(initialStatuses);
   const [groups, setGroups] = useState(initialGroups);
   const [tags, setTags] = useState(initialTags);
+  const [priorities, setPriorities] = useState(priorityOptions);
+  const [newStatus, setNewStatus] = useState("");
+  const [newPriority, setNewPriority] = useState("");
+  const [masterSearch, setMasterSearch] = useState({
+    groups: "",
+    tags: "",
+    statuses: "",
+    priorities: "",
+  });
+  const [masterVisibleCount, setMasterVisibleCount] = useState({
+    groups: 50,
+    tags: 50,
+    statuses: 50,
+    priorities: 50,
+  });
+  const [editingMaster, setEditingMaster] = useState(null);
+  const [editingMasterValue, setEditingMasterValue] = useState("");
   const [search, setSearch] = useState("");
   const [selectedGroup, setSelectedGroup] = useState("All");
   const [selectedTag, setSelectedTag] = useState("All");
@@ -943,6 +960,136 @@ export default function NoteTaskAppV1() {
     setNewTag("");
   }
 
+  function addStatus() {
+    const name = newStatus.trim();
+    if (!name || statuses.includes(name)) return;
+    setStatuses((current) => [...current, name]);
+    setStatusColors((current) => ({ ...current, [name]: "#e5e5e5" }));
+    setNewStatus("");
+  }
+
+  function addPriority() {
+    const name = newPriority.trim();
+    if (!name || priorities.includes(name)) return;
+    setPriorities((current) => [...current, name]);
+    setPriorityColors((current) => ({ ...current, [name]: "#e5e5e5" }));
+    setNewPriority("");
+  }
+
+  function updateMasterSearch(type, value) {
+    setMasterSearch((current) => ({ ...current, [type]: value }));
+  }
+
+  function showMoreMasterItems(type) {
+    setMasterVisibleCount((current) => ({ ...current, [type]: current[type] + 50 }));
+  }
+
+  function startEditMaster(type, oldName) {
+    setEditingMaster({ type, oldName });
+    setEditingMasterValue(oldName);
+  }
+
+  function cancelEditMaster() {
+    setEditingMaster(null);
+    setEditingMasterValue("");
+  }
+
+  function renameMasterItem(type, oldName, newName) {
+    const cleanName = newName.trim();
+
+    if (!cleanName || cleanName === oldName) {
+      cancelEditMaster();
+      return;
+    }
+
+    if (type === "groups") {
+      if (groups.includes(cleanName)) return;
+      setGroups((current) => current.map((item) => (item === oldName ? cleanName : item)));
+      setTasks((current) => current.map((task) => (task.group === oldName ? { ...task, group: cleanName } : task)));
+    }
+
+    if (type === "tags") {
+      if (tags.includes(cleanName)) return;
+      setTags((current) => current.map((item) => (item === oldName ? cleanName : item)));
+      setTasks((current) => current.map((task) => ({ ...task, tags: task.tags.map((tag) => (tag === oldName ? cleanName : tag)) })));
+      setTagColors((current) => {
+        const next = { ...current, [cleanName]: current[oldName] || "#e5e5e5" };
+        delete next[oldName];
+        return next;
+      });
+    }
+
+    if (type === "statuses") {
+      if (statuses.includes(cleanName)) return;
+      setStatuses((current) => current.map((item) => (item === oldName ? cleanName : item)));
+      setTasks((current) => current.map((task) => (task.status === oldName ? { ...task, status: cleanName } : task)));
+      setStatusColors((current) => {
+        const next = { ...current, [cleanName]: current[oldName] || "#e5e5e5" };
+        delete next[oldName];
+        return next;
+      });
+    }
+
+    if (type === "priorities") {
+      if (priorities.includes(cleanName)) return;
+      setPriorities((current) => current.map((item) => (item === oldName ? cleanName : item)));
+      setTasks((current) => current.map((task) => (task.priority === oldName ? { ...task, priority: cleanName } : task)));
+      setPriorityColors((current) => {
+        const next = { ...current, [cleanName]: current[oldName] || "#e5e5e5" };
+        delete next[oldName];
+        return next;
+      });
+    }
+
+    cancelEditMaster();
+  }
+
+  function deleteMasterItem(type, name) {
+    const ok = window.confirm(`Delete "${name}"? Existing tasks will be moved to a safe default.`);
+    if (!ok) return;
+
+    if (type === "groups") {
+      if (groups.length <= 1) return;
+      const fallback = groups.find((item) => item !== name) || "Personal";
+      setGroups((current) => current.filter((item) => item !== name));
+      setTasks((current) => current.map((task) => (task.group === name ? { ...task, group: fallback } : task)));
+    }
+
+    if (type === "tags") {
+      setTags((current) => current.filter((item) => item !== name));
+      setTasks((current) => current.map((task) => ({ ...task, tags: task.tags.filter((tag) => tag !== name) })));
+      setTagColors((current) => {
+        const next = { ...current };
+        delete next[name];
+        return next;
+      });
+    }
+
+    if (type === "statuses") {
+      if (statuses.length <= 1) return;
+      const fallback = statuses.find((item) => item !== name) || "Open";
+      setStatuses((current) => current.filter((item) => item !== name));
+      setTasks((current) => current.map((task) => (task.status === name ? { ...task, status: fallback } : task)));
+      setStatusColors((current) => {
+        const next = { ...current };
+        delete next[name];
+        return next;
+      });
+    }
+
+    if (type === "priorities") {
+      if (priorities.length <= 1) return;
+      const fallback = priorities.find((item) => item !== name) || "Medium";
+      setPriorities((current) => current.filter((item) => item !== name));
+      setTasks((current) => current.map((task) => (task.priority === name ? { ...task, priority: fallback } : task)));
+      setPriorityColors((current) => {
+        const next = { ...current };
+        delete next[name];
+        return next;
+      });
+    }
+  }
+
   function updateStatusColor(status, color) {
     setStatusColors((current) => ({ ...current, [status]: color }));
   }
@@ -967,6 +1114,7 @@ export default function NoteTaskAppV1() {
     if (type === "groups") setGroups(reorder);
     if (type === "tags") setTags(reorder);
     if (type === "statuses") setStatuses(reorder);
+    if (type === "priorities") setPriorities(reorder);
   }
 
   function toggleTableColumn(columnKey) {
@@ -1248,6 +1396,24 @@ export default function NoteTaskAppV1() {
               updateTagColor={updateTagColor}
               tags={tags}
               statuses={statuses}
+              priorities={priorities}
+              newStatus={newStatus}
+              setNewStatus={setNewStatus}
+              addStatus={addStatus}
+              newPriority={newPriority}
+              setNewPriority={setNewPriority}
+              addPriority={addPriority}
+              masterSearch={masterSearch}
+              updateMasterSearch={updateMasterSearch}
+              masterVisibleCount={masterVisibleCount}
+              showMoreMasterItems={showMoreMasterItems}
+              editingMaster={editingMaster}
+              editingMasterValue={editingMasterValue}
+              setEditingMasterValue={setEditingMasterValue}
+              startEditMaster={startEditMaster}
+              cancelEditMaster={cancelEditMaster}
+              renameMasterItem={renameMasterItem}
+              deleteMasterItem={deleteMasterItem}
               defaultGroupMode={defaultGroupMode}
               applyDefaultGroupMode={applyDefaultGroupMode}
               newGroup={newGroup}
@@ -1304,6 +1470,7 @@ function StatCard({ icon: Icon, label, value }) {
 }
 
 function HomeView(props) {
+  const safeProps = props || {};
   const {
     groups,
     statuses,
@@ -1342,7 +1509,7 @@ function HomeView(props) {
     homeFiltersOpen,
     setHomeFiltersOpen,
     openTaskPopup,
-  } = props;
+  } = safeProps;
 
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedTaskIds, setSelectedTaskIds] = useState([]);
@@ -1756,7 +1923,7 @@ function CompactDatePicker({ value, onChange, title = "Deadline" }) {
   );
 }
 
-function TaskCard({ task, statuses, groups, priorities, tags, statusColors, priorityColors, tagColors, updateTask, toggleSubtask, addSubtask, removeTask, toggleTaskTag, allTasks, openTaskPopup }) {
+function TaskCard({ task, statuses, groups, priorities = priorityOptions, tags, statusColors, priorityColors, tagColors, updateTask, toggleSubtask, addSubtask, removeTask, toggleTaskTag, allTasks, openTaskPopup }) {
   const progress = getProgress(task);
   const [expanded, setExpanded] = useState(false);
   const taskPriorityAccent = {
@@ -2514,7 +2681,7 @@ function CalendarView({ statusColors, priorityColors, tasks, openTaskPopup, cale
   );
 }
 
-function GanttView({ statusColors, priorityColors, tasks, groups, statuses, priorities, tags, ganttGroupBy, setGanttGroupBy, updateTask, allTasks, ganttColumns, toggleGanttColumn, openTaskPopup }) {
+function GanttView({ statusColors, priorityColors, tasks, groups, statuses, priorities = priorityOptions, tags, ganttGroupBy, setGanttGroupBy, updateTask, allTasks, ganttColumns, toggleGanttColumn, openTaskPopup }) {
   const sorted = [...tasks].sort((a, b) => getTaskStartDate(a).localeCompare(getTaskStartDate(b)));
   const safeTasks = sorted.length ? sorted : [];
   const start = safeTasks.length
@@ -2910,7 +3077,7 @@ function GanttView({ statusColors, priorityColors, tasks, groups, statuses, prio
   );
 }
 
-function TaskDetailModal({ statusColors, priorityColors, tagColors, task, statuses, groups, priorities, tags, allTasks, updateTask, toggleSubtask, addSubtask, removeTask, onClose }) {
+function TaskDetailModal({ statusColors, priorityColors, tagColors, task, statuses, groups, priorities = priorityOptions, tags, allTasks, updateTask, toggleSubtask, addSubtask, removeTask, onClose }) {
   const [draft, setDraft] = useState(task || null);
 
   useEffect(() => {
