@@ -1053,6 +1053,34 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
     );
   }
 
+  function updateSubtask(taskId, subtaskId, patch) {
+    setTasks((current) =>
+      current.map((task) => {
+        if (task.id !== taskId) return task;
+        return {
+          ...task,
+          subtasks: task.subtasks.map((subtask) =>
+            subtask.id === subtaskId ? { ...subtask, ...patch } : subtask
+          ),
+        };
+      })
+    );
+  }
+
+  function removeSubtask(taskId, subtaskId) {
+    const ok = window.confirm("Delete this subtask?");
+    if (!ok) return;
+    setTasks((current) =>
+      current.map((task) => {
+        if (task.id !== taskId) return task;
+        return {
+          ...task,
+          subtasks: task.subtasks.filter((subtask) => subtask.id !== subtaskId),
+        };
+      })
+    );
+  }
+
   function removeTask(taskId) {
     setTasks((current) => current.filter((task) => task.id !== taskId));
   }
@@ -1428,6 +1456,8 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
               updateTask={updateTask}
               toggleSubtask={toggleSubtask}
               addSubtask={addSubtask}
+              updateSubtask={updateSubtask}
+              removeSubtask={removeSubtask}
               removeTask={removeTask}
               toggleTaskTag={toggleTaskTag}
               allTasks={tasks}
@@ -1565,6 +1595,8 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
               updateTask={updateTask}
               toggleSubtask={toggleSubtask}
               addSubtask={addSubtask}
+              updateSubtask={updateSubtask}
+              removeSubtask={removeSubtask}
               removeTask={removeTask}
               onClose={closeTaskPopup}
             />
@@ -1939,6 +1971,8 @@ function HomeView(props) {
                     updateTask={updateTask}
                     toggleSubtask={toggleSubtask}
                     addSubtask={addSubtask}
+                    updateSubtask={updateSubtask}
+                    removeSubtask={removeSubtask}
                     removeTask={removeTask}
                     toggleTaskTag={toggleTaskTag}
                     allTasks={allTasks}
@@ -2045,7 +2079,7 @@ function CompactDatePicker({ value, onChange, title = "Deadline" }) {
   );
 }
 
-function TaskCard({ task, statuses, groups, priorities = ["High", "Medium", "Low"], tags, statusColors, priorityColors, tagColors, updateTask, toggleSubtask, addSubtask, removeTask, toggleTaskTag, allTasks, openTaskPopup }) {
+function TaskCard({ task, statuses, groups, priorities = ["High", "Medium", "Low"], tags, statusColors, priorityColors, tagColors, updateTask, toggleSubtask, addSubtask, updateSubtask, removeSubtask, removeTask, toggleTaskTag, allTasks, openTaskPopup }) {
   const progress = getProgress(task);
   const [expanded, setExpanded] = useState(false);
   const taskPriorityAccent = {
@@ -2218,17 +2252,36 @@ function TaskCard({ task, statuses, groups, priorities = ["High", "Medium", "Low
                 <div className="space-y-1">
                   {task.subtasks.length ? (
                     task.subtasks.map((subtask) => (
-                      <label key={subtask.id} className="flex items-center gap-2 rounded-md bg-slate-50 px-2 py-1 text-[11px]">
+                      <div key={subtask.id} className="flex items-center gap-2 rounded-md bg-slate-50 px-2 py-1 text-[11px]">
                         <input
                           type="checkbox"
                           checked={subtask.done}
                           onClick={(event) => event.stopPropagation()}
                           onChange={() => toggleSubtask(task.id, subtask.id)}
+                          title="Mark subtask done"
                         />
-                        <span className={subtask.done ? "text-slate-400 line-through" : "text-slate-700"}>
-                          {subtask.title}
-                        </span>
-                      </label>
+                        <input
+                          value={subtask.title}
+                          onClick={(event) => event.stopPropagation()}
+                          onChange={(event) => updateSubtask(task.id, subtask.id, { title: event.target.value })}
+                          className={classNames(
+                            "h-6 min-w-0 flex-1 rounded-md border border-slate-200 bg-white px-2 text-[11px] outline-none focus:border-slate-400",
+                            subtask.done ? "text-slate-400 line-through" : "text-slate-700"
+                          )}
+                          title="Edit subtask"
+                        />
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            removeSubtask(task.id, subtask.id);
+                          }}
+                          className="rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-red-500 hover:bg-red-50"
+                          title="Delete subtask"
+                        >
+                          Delete
+                        </button>
+                      </div>
                     ))
                   ) : (
                     <div className="rounded-md bg-slate-50 px-2 py-1.5 text-[11px] text-slate-400">No subtasks</div>
@@ -3240,7 +3293,7 @@ function GanttView({ statusColors, priorityColors, tasks, groups, statuses, prio
   );
 }
 
-function TaskDetailModal({ statusColors, priorityColors, tagColors, task, statuses, groups, priorities = ["High", "Medium", "Low"], tags, allTasks, updateTask, toggleSubtask, addSubtask, removeTask, onClose }) {
+function TaskDetailModal({ statusColors, priorityColors, tagColors, task, statuses, groups, priorities = ["High", "Medium", "Low"], tags, allTasks, updateTask, toggleSubtask, addSubtask, updateSubtask, removeSubtask, removeTask, onClose }) {
   const [draft, setDraft] = useState(task || null);
 
   useEffect(() => {
@@ -3334,10 +3387,32 @@ function TaskDetailModal({ statusColors, priorityColors, tagColors, task, status
                 </div>
                 <div className="space-y-1.5">
                   {task.subtasks.length ? task.subtasks.map((subtask) => (
-                    <label key={subtask.id} className="flex items-center gap-2 rounded-lg bg-white px-2 py-1.5 text-xs shadow-sm ring-1 ring-slate-100">
-                      <input type="checkbox" checked={subtask.done} onChange={() => toggleSubtask(task.id, subtask.id)} />
-                      <span className={subtask.done ? "text-slate-400 line-through" : "text-slate-700"}>{subtask.title}</span>
-                    </label>
+                    <div key={subtask.id} className="flex items-center gap-2 rounded-lg bg-white px-2 py-1.5 text-xs shadow-sm ring-1 ring-slate-100">
+                      <input
+                        type="checkbox"
+                        checked={subtask.done}
+                        onChange={() => toggleSubtask(task.id, subtask.id)}
+                        title="Mark subtask done"
+                      />
+                      <Input
+                        value={subtask.title}
+                        onChange={(event) => updateSubtask(task.id, subtask.id, { title: event.target.value })}
+                        className={classNames(
+                          "h-7 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2 text-xs outline-none focus:border-slate-400",
+                          subtask.done ? "text-slate-400 line-through" : "text-slate-700"
+                        )}
+                        title="Edit subtask"
+                      />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeSubtask(task.id, subtask.id)}
+                        className="h-7 rounded-lg px-2 text-[10px] text-red-500 hover:text-red-700"
+                        title="Delete subtask"
+                      >
+                        Delete
+                      </Button>
+                    </div>
                   )) : <div className="text-xs text-slate-400">No subtasks yet.</div>}
                 </div>
               </div>
