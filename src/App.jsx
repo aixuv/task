@@ -788,7 +788,9 @@ function App() {
 export default App;
 
 function NoteTaskAppV1({ session, profile, onSignOut }) {
-  const [activeView, setActiveView] = useState("Home");
+  const [activeView, setActiveView] = useState(() => {
+  return localStorage.getItem("noteflow_active_view") || "Home";
+  });
   const [tasks, setTasks] = useState(initialTasks);
   const [statuses, setStatuses] = useState(initialStatuses);
   const [groups, setGroups] = useState(initialGroups);
@@ -840,6 +842,10 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
   const [tagColors, setTagColors] = useState(defaultTagColors);
   const [cloudReady, setCloudReady] = useState(false);
   const [cloudStatus, setCloudStatus] = useState("Loading cloud data...");
+
+  useEffect(() => {
+  localStorage.setItem("noteflow_active_view", activeView);
+  }, [activeView]);
 
   const filteredTasks = useMemo(() => {
     return tasks.filter((task) => {
