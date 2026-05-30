@@ -2964,6 +2964,7 @@ function KanbanView({ statusColors, priorityColors, tagColors, openTaskPopup, ka
       <div className="flex max-h-[calc(100vh-145px)] gap-2 overflow-x-auto overflow-y-hidden pb-1">
         {columns.map((column, index) => {
           const columnTasks = getColumnTasks(column);
+          if (columnTasks.length === 0) return null;
           return (
             <div
               key={column}
