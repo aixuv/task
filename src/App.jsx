@@ -791,7 +791,7 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
   const [activeView, setActiveView] = useState(() => {
   return localStorage.getItem("noteflow_active_view") || "Home";
   });
-  const [tasks, setTasks] = useState(initialTasks);
+  const [tasks, setTasks] = useState([]);
   const [statuses, setStatuses] = useState(initialStatuses);
   const [groups, setGroups] = useState(initialGroups);
   const [tags, setTags] = useState(initialTags);
