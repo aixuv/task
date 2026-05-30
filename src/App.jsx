@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
   CalendarDays,
@@ -15,11 +15,14 @@ import {
   Table2,
   Tag,
   Trash2,
+  Users,
+  LogOut,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { supabase } from "@/lib/supabaseClient";
 
 const initialStatuses = ["Backlog", "Open", "In Progress", "Blocked", "Done"];
 const initialGroups = ["Personal", "Work", "Project A", "Learning"];
@@ -422,82 +425,6 @@ function formatDate(dateString) {
   return `${day}-${month}-${year}`;
 }
 
-function normalizeCsvDate(value) {
-  const raw = String(value || "").trim();
-  if (!raw) return "";
-  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
-  const slashMatch = raw.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})$/);
-  if (slashMatch) {
-    const [, dd, mm, yy] = slashMatch;
-    const year = yy.length === 2 ? `20${yy}` : yy;
-    return `${year}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
-  }
-  const parsed = new Date(raw);
-  if (!Number.isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
-  return "";
-}
-
-function parseCsvText(text) {
-  const rows = [];
-  let row = [];
-  let value = "";
-  let insideQuotes = false;
-
-  for (let index = 0; index < text.length; index += 1) {
-    const char = text[index];
-    const nextChar = text[index + 1];
-
-    if (char === '"' && insideQuotes && nextChar === '"') {
-      value += '"';
-      index += 1;
-      continue;
-    }
-
-    if (char === '"') {
-      insideQuotes = !insideQuotes;
-      continue;
-    }
-
-    if (char === "," && !insideQuotes) {
-      row.push(value.trim());
-      value = "";
-      continue;
-    }
-
-    if ((char === "\n" || char === "\r") && !insideQuotes) {
-      if (char === "\r" && nextChar === "\n") index += 1;
-      row.push(value.trim());
-      value = "";
-      if (row.some((cell) => cell !== "")) rows.push(row);
-      row = [];
-      continue;
-    }
-
-    value += char;
-  }
-
-  row.push(value.trim());
-  if (row.some((cell) => cell !== "")) rows.push(row);
-
-  if (!rows.length) return [];
-
-  const headers = rows[0].map((header) => header.trim().toLowerCase());
-  return rows.slice(1).map((cells) => {
-    const item = {};
-    headers.forEach((header, index) => {
-      item[header] = cells[index] || "";
-    });
-    return item;
-  });
-}
-
-function splitCsvList(value) {
-  return String(value || "")
-    .split(/[|;]/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
 function addDays(dateString, days) {
   const date = new Date(`${dateString}T00:00:00`);
   if (Number.isNaN(date.getTime())) return dateString;
@@ -678,13 +605,197 @@ const appStyles = String.raw`
   }
 `;
 
-export default function NoteTaskAppV1() {
-  const [activeView, setActiveView] = useState("Home");
-  const [tasks, setTasks] = useState(initialTasks);
+
+function LoginView({ onAuthenticated }) {
+  const [mode, setMode] = useState("sign-in");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
+
+  async function submitAuth(event) {
+    event.preventDefault();
+    setLoading(true);
+    setMessage("");
+    const normalizedEmail = email.trim().toLowerCase();
+    try {
+      if (mode === "sign-up") {
+        const { error } = await supabase.auth.signUp({
+          email: normalizedEmail,
+          password,
+          options: {
+            data: { full_name: fullName.trim() },
+            emailRedirectTo: window.location.origin + window.location.pathname,
+          },
+        });
+        if (error) throw error;
+        setMessage("Signup done. Check your email if confirmation is enabled, then sign in.");
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password });
+        if (error) throw error;
+        onAuthenticated?.();
+      }
+    } catch (error) {
+      setMessage(error.message || "Authentication failed.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-neutral-950 text-white">
+      <div className="mx-auto flex min-h-screen max-w-6xl items-center justify-center p-4">
+        <div className="grid w-full grid-cols-1 gap-6 lg:grid-cols-[1fr_420px] lg:items-center">
+          <div className="hidden lg:block">
+            <div className="mb-4 inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-neutral-300">NoteFlow V1 · Task + note workspace</div>
+            <h1 className="max-w-xl text-5xl font-bold tracking-tight">Manage notes, tasks, deadlines, and Gantt plans in one workspace.</h1>
+            <p className="mt-4 max-w-xl text-base leading-7 text-neutral-400">Login keeps your tasks, groups, tags, colors, and settings synced with Supabase.</p>
+          </div>
+          <form onSubmit={submitAuth} className="rounded-3xl border border-white/10 bg-white/[0.06] p-6 shadow-2xl backdrop-blur">
+            <div className="mb-5">
+              <h2 className="text-2xl font-bold">{mode === "sign-in" ? "Sign in" : "Create account"}</h2>
+              <p className="mt-1 text-sm text-neutral-400">Use your registered email and password.</p>
+            </div>
+            <div className="space-y-3">
+              {mode === "sign-up" && (
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-neutral-300">Full name</label>
+                  <Input value={fullName} onChange={(event) => setFullName(event.target.value)} className="h-10 rounded-xl border border-neutral-300 bg-white px-3 text-neutral-950 placeholder:text-neutral-400 outline-none focus:border-neutral-500" placeholder="Your name" />
+                </div>
+              )}
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-neutral-300">Email</label>
+                <Input type="email" required value={email} onChange={(event) => setEmail(event.target.value)} className="h-10 rounded-xl border border-neutral-300 bg-white px-3 text-neutral-950 placeholder:text-neutral-400 outline-none focus:border-neutral-500" placeholder="you@example.com" />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-neutral-300">Password</label>
+                <Input type="password" required minLength={6} value={password} onChange={(event) => setPassword(event.target.value)} className="h-10 rounded-xl border border-neutral-300 bg-white px-3 text-neutral-950 placeholder:text-neutral-400 outline-none focus:border-neutral-500" placeholder="Minimum 6 characters" />
+              </div>
+              {message && <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-neutral-300">{message}</div>}
+                <button
+                  type="submit"
+                  disabled={loading}
+                  style={{
+                    width: "100%",
+                    height: "44px",
+                    borderRadius: "14px",
+                    background: "#ffffff",
+                    color: "#111827",
+                    fontWeight: 700,
+                    border: "1px solid #ffffff",
+                    cursor: loading ? "not-allowed" : "pointer",
+                    opacity: loading ? 0.75 : 1,
+                  }}
+                  onMouseEnter={(event) => {
+                    event.currentTarget.style.background = "#e5e7eb";
+                    event.currentTarget.style.color = "#111827";
+                  }}
+                  onMouseLeave={(event) => {
+                    event.currentTarget.style.background = "#ffffff";
+                    event.currentTarget.style.color = "#111827";
+                  }}
+                >
+                  {loading ? "Please wait..." : mode === "sign-in" ? "Sign in" : "Create account"}
+                </button>
+              <button type="button" onClick={() => { setMode(mode === "sign-in" ? "sign-up" : "sign-in"); setMessage(""); }} className="w-full text-center text-xs text-neutral-400 hover:text-white">
+                {mode === "sign-in" ? "Need an account? Sign up" : "Already have an account? Sign in"}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+async function fetchOrCreateProfile(session) {
+  if (!session?.user) return null;
+  const { data, error } = await supabase.from("user_profiles").select("*").eq("id", session.user.id).maybeSingle();
+  if (error) throw error;
+  if (data) return data;
+  const email = session.user.email || "";
+  const fullName = session.user.user_metadata?.full_name || "";
+  const { data: created, error: createError } = await supabase
+    .from("user_profiles")
+    .insert({ id: session.user.id, email, full_name: fullName, role: email.toLowerCase() === "nikhilpareta16@gmail.com" ? "admin" : "member", is_active: true })
+    .select("*")
+    .single();
+  if (createError) throw createError;
+  return created;
+}
+
+function App() {
+  const [session, setSession] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState("");
+
+  async function loadProfile(nextSession) {
+    if (!nextSession) {
+      setProfile(null);
+      setLoading(false);
+      return;
+    }
+    try {
+      const nextProfile = await fetchOrCreateProfile(nextSession);
+      setProfile(nextProfile);
+      setAuthError("");
+      if (nextProfile && nextProfile.is_active === false) {
+        setAuthError("Your account is disabled. Contact admin.");
+        await supabase.auth.signOut();
+      }
+    } catch (error) {
+      setAuthError(error.message || "Could not load profile.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    let mounted = true;
+    supabase.auth.getSession().then(({ data }) => {
+      if (!mounted) return;
+      setSession(data.session || null);
+      loadProfile(data.session || null);
+    });
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession || null);
+      setLoading(true);
+      loadProfile(nextSession || null);
+    });
+    return () => {
+      mounted = false;
+      listener.subscription.unsubscribe();
+    };
+  }, []);
+
+  if (loading) {
+    return <div className="flex min-h-screen items-center justify-center bg-neutral-950 text-white">Loading NoteFlow...</div>;
+  }
+
+  if (!session) {
+    return <LoginView onAuthenticated={() => {}} />;
+  }
+
+  if (authError) {
+    return <div className="flex min-h-screen items-center justify-center bg-neutral-950 p-4 text-white"><div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-sm">{authError}</div></div>;
+  }
+
+  return <NoteTaskAppV1 session={session} profile={profile} onSignOut={() => supabase.auth.signOut()} />;
+}
+
+export default App;
+
+function NoteTaskAppV1({ session, profile, onSignOut }) {
+  const [activeView, setActiveView] = useState(() => {
+  return localStorage.getItem("noteflow_active_view") || "Home";
+  });
+  const [tasks, setTasks] = useState([]);
   const [statuses, setStatuses] = useState(initialStatuses);
   const [groups, setGroups] = useState(initialGroups);
   const [tags, setTags] = useState(initialTags);
-  const [priorities, setPriorities] = useState(priorityOptions);
+  const [priorities, setPriorities] = useState(["High", "Medium", "Low"]);
   const [newStatus, setNewStatus] = useState("");
   const [newPriority, setNewPriority] = useState("");
   const [masterSearch, setMasterSearch] = useState({
@@ -729,6 +840,12 @@ export default function NoteTaskAppV1() {
   const [statusColors, setStatusColors] = useState(defaultStatusColors);
   const [priorityColors, setPriorityColors] = useState(defaultPriorityColors);
   const [tagColors, setTagColors] = useState(defaultTagColors);
+  const [cloudReady, setCloudReady] = useState(false);
+  const [cloudStatus, setCloudStatus] = useState("Loading cloud data...");
+
+  useEffect(() => {
+  localStorage.setItem("noteflow_active_view", activeView);
+  }, [activeView]);
 
   const filteredTasks = useMemo(() => {
     return tasks.filter((task) => {
@@ -749,6 +866,90 @@ export default function NoteTaskAppV1() {
   const doneTasks = tasks.filter((task) => task.status === "Done");
   const overdueTasks = tasks.filter((task) => task.status !== "Done" && task.deadline < todayIso());
 
+  useEffect(() => {
+    let ignore = false;
+    async function loadCloudState() {
+      if (!session?.user?.id) return;
+      setCloudReady(false);
+      setCloudStatus("Loading cloud data...");
+      const { data, error } = await supabase
+        .from("user_app_state")
+        .select("state")
+        .eq("user_id", session.user.id)
+        .eq("app_key", "note_task_v1")
+        .maybeSingle();
+      if (ignore) return;
+      if (error) {
+        setCloudStatus(`Cloud load failed: ${error.message}`);
+        setCloudReady(true);
+        return;
+      }
+      const state = data?.state;
+      if (state) {
+        if (Array.isArray(state.tasks)) setTasks(state.tasks);
+        if (Array.isArray(state.statuses)) setStatuses(state.statuses);
+        if (Array.isArray(state.groups)) setGroups(state.groups);
+        if (Array.isArray(state.tags)) setTags(state.tags);
+        if (Array.isArray(state.priorities) && state.priorities.length) setPriorities(state.priorities);
+        if (state.defaultGroupMode) setDefaultGroupMode(state.defaultGroupMode);
+        if (state.homeGroupBy) setHomeGroupBy(state.homeGroupBy);
+        if (state.tableGroupBy) setTableGroupBy(state.tableGroupBy);
+        if (state.ganttGroupBy) setGanttGroupBy(state.ganttGroupBy);
+        if (state.calendarGroupBy) setCalendarGroupBy(state.calendarGroupBy);
+        if (state.ganttColumns) setGanttColumns(state.ganttColumns);
+        if (state.kanbanBy) setKanbanBy(state.kanbanBy);
+        if (state.tableColumns) setTableColumns(state.tableColumns);
+        if (typeof state.homeMinimalMode === "boolean") setHomeMinimalMode(state.homeMinimalMode);
+        if (typeof state.sidebarCollapsed === "boolean") setSidebarCollapsed(state.sidebarCollapsed);
+        if (state.displayScale) setDisplayScale(state.displayScale);
+        if (typeof state.darkMode === "boolean") setDarkMode(state.darkMode);
+        if (state.statusColors) setStatusColors({ ...defaultStatusColors, ...state.statusColors });
+        if (state.priorityColors) setPriorityColors({ ...defaultPriorityColors, ...state.priorityColors });
+        if (state.tagColors) setTagColors({ ...defaultTagColors, ...state.tagColors });
+      }
+      setCloudStatus(data?.state ? "Cloud data loaded" : "Using default sample data");
+      setCloudReady(true);
+    }
+    loadCloudState();
+    return () => { ignore = true; };
+  }, [session?.user?.id]);
+
+  useEffect(() => {
+    if (!cloudReady || !session?.user?.id) return;
+    const handle = window.setTimeout(async () => {
+      const state = {
+        tasks,
+        statuses,
+        groups,
+        tags,
+        priorities,
+        defaultGroupMode,
+        homeGroupBy,
+        tableGroupBy,
+        ganttGroupBy,
+        calendarGroupBy,
+        ganttColumns,
+        kanbanBy,
+        tableColumns,
+        homeMinimalMode,
+        sidebarCollapsed,
+        displayScale,
+        darkMode,
+        statusColors,
+        priorityColors,
+        tagColors,
+        updatedAt: new Date().toISOString(),
+      };
+      const { error } = await supabase
+        .from("user_app_state")
+        .upsert({ user_id: session.user.id, app_key: "note_task_v1", state, updated_at: new Date().toISOString() }, { onConflict: "user_id,app_key" });
+      setCloudStatus(error ? `Cloud save failed: ${error.message}` : "Saved to cloud");
+    }, 600);
+    return () => window.clearTimeout(handle);
+  }, [cloudReady, session?.user?.id, tasks, statuses, groups, tags, priorities, defaultGroupMode, homeGroupBy, tableGroupBy, ganttGroupBy, calendarGroupBy, ganttColumns, kanbanBy, tableColumns, homeMinimalMode, sidebarCollapsed, displayScale, darkMode, statusColors, priorityColors, tagColors]);
+
+
+  const canManageUsers = ["admin", "director"].includes(profile?.role);
   const navItems = [
     { name: "Home", icon: Home },
     { name: "Kanban", icon: Columns3 },
@@ -756,6 +957,7 @@ export default function NoteTaskAppV1() {
     { name: "Calendar", icon: CalendarDays },
     { name: "Gantt", icon: GanttChartSquare },
     { name: "Master Data", icon: LayoutDashboard },
+    ...(canManageUsers ? [{ name: "User Management", icon: Users }] : []),
   ];
 
   function applyDefaultGroupMode(nextMode) {
@@ -808,91 +1010,6 @@ export default function NoteTaskAppV1() {
     setTasks((current) => [task, ...current]);
   }
 
-  async function importTasksFromCsv(file) {
-    if (!file) return;
-
-    try {
-      const text = await file.text();
-      const rows = parseCsvText(text);
-      if (!rows.length) {
-        window.alert("No task rows found in CSV.");
-        return;
-      }
-
-      const nextGroups = new Set(groups);
-      const nextStatuses = new Set(statuses);
-      const nextPriorities = new Set(priorities);
-      const nextTags = new Set(tags);
-      const newStatusColorMap = {};
-      const newPriorityColorMap = {};
-      const newTagColorMap = {};
-      const importedTasks = [];
-      const skippedRows = [];
-
-      rows.forEach((row, rowIndex) => {
-        const title = String(row.title || row.task || row.name || "").trim();
-        if (!title) {
-          skippedRows.push(rowIndex + 2);
-          return;
-        }
-
-        const group = String(row.group || row.project || "Personal").trim() || "Personal";
-        const status = String(row.status || "Open").trim() || "Open";
-        const priority = String(row.priority || "Medium").trim() || "Medium";
-        const rowTags = splitCsvList(row.tags || row.tag);
-        const subtasks = splitCsvList(row.subtasks || row.subtask).map((title, index) => ({
-          id: Date.now() + rowIndex * 1000 + index,
-          title,
-          done: false,
-        }));
-
-        nextGroups.add(group);
-        nextStatuses.add(status);
-        nextPriorities.add(priority);
-        rowTags.forEach((tag) => nextTags.add(tag));
-
-        if (!statusColors[status]) newStatusColorMap[status] = "#e5e5e5";
-        if (!priorityColors[priority]) newPriorityColorMap[priority] = "#e5e5e5";
-        rowTags.forEach((tag) => {
-          if (!tagColors[tag]) newTagColorMap[tag] = "#e5e5e5";
-        });
-
-        importedTasks.push({
-          id: Date.now() + rowIndex,
-          title,
-          description: String(row.description || row.desc || "").trim(),
-          group,
-          status,
-          priority,
-          tags: rowTags,
-          deadline: normalizeCsvDate(row.deadline || row.due || row.due_date) || todayIso(),
-          completedAt: normalizeCsvDate(row.completedat || row.completed_at || row.completion || row.done_date),
-          dependency: String(row.dependency || row.depends || "").trim(),
-          remarks: String(row.remarks || row.remark || row.notes || "").trim(),
-          subtasks,
-        });
-      });
-
-      if (!importedTasks.length) {
-        window.alert(`No tasks imported. Skipped rows: ${skippedRows.join(", ") || "all"}`);
-        return;
-      }
-
-      setGroups(Array.from(nextGroups));
-      setStatuses(Array.from(nextStatuses));
-      setPriorities(Array.from(nextPriorities));
-      setTags(Array.from(nextTags));
-      if (Object.keys(newStatusColorMap).length) setStatusColors((current) => ({ ...current, ...newStatusColorMap }));
-      if (Object.keys(newPriorityColorMap).length) setPriorityColors((current) => ({ ...current, ...newPriorityColorMap }));
-      if (Object.keys(newTagColorMap).length) setTagColors((current) => ({ ...current, ...newTagColorMap }));
-      setTasks((current) => [...importedTasks, ...current]);
-
-      window.alert(`Imported ${importedTasks.length} task${importedTasks.length === 1 ? "" : "s"}.${skippedRows.length ? ` Skipped rows: ${skippedRows.join(", ")}` : ""}`);
-    } catch (error) {
-      window.alert(`CSV import failed: ${error.message || "Invalid file"}`);
-    }
-  }
-
   function openTaskPopup(taskId) {
     setTaskPopupId(taskId);
   }
@@ -928,17 +1045,50 @@ export default function NoteTaskAppV1() {
   }
 
   function addSubtask(taskId) {
-    const title = window.prompt("Subtask name");
-    if (!title?.trim()) return;
     setTasks((current) =>
       current.map((task) =>
         task.id === taskId
           ? {
               ...task,
-              subtasks: [...task.subtasks, { id: Date.now(), title: title.trim(), done: false }],
+              subtasks: [
+                ...task.subtasks,
+                {
+                  id: Date.now(),
+                  title: "",
+                  done: false,
+                },
+              ],
             }
           : task
       )
+    );
+  }
+
+  function updateSubtask(taskId, subtaskId, patch) {
+    setTasks((current) =>
+      current.map((task) => {
+        if (task.id !== taskId) return task;
+        return {
+          ...task,
+          subtasks: task.subtasks.map((subtask) =>
+            subtask.id === subtaskId ? { ...subtask, ...patch } : subtask
+          ),
+        };
+      })
+    );
+  }
+
+  function removeSubtask(taskId, subtaskId) {
+    const ok = window.confirm("Delete this subtask?");
+    if (!ok) return;
+    setTasks((current) =>
+      current.map((task) => {
+        if (task.id !== taskId) return task;
+        return {
+          ...task,
+          subtasks: task.subtasks.filter((subtask) => subtask.id !== subtaskId),
+        };
+      })
     );
   }
 
@@ -1145,7 +1295,7 @@ export default function NoteTaskAppV1() {
     if (kanbanBy === "Deadline") return [...new Set(filteredTasks.map((task) => task.deadline))].sort();
     if (kanbanBy === "Tag") return tags;
     return statuses;
-  }, [kanbanBy, statuses, groups, priorities, tags, filteredTasks]);
+  }, [kanbanBy, statuses, groups, tags, priorities, filteredTasks]);
 
   return (
     <div className={classNames("min-h-screen transition-colors", darkMode ? "bg-neutral-950 text-neutral-100 dark" : "bg-slate-50 text-slate-900")}>
@@ -1190,6 +1340,15 @@ export default function NoteTaskAppV1() {
               );
             })}
           </nav>
+          {!sidebarCollapsed && (
+            <div className="absolute bottom-3 left-2.5 right-2.5 rounded-xl border border-slate-200 bg-white/70 p-2 text-xs dark:border-neutral-800 dark:bg-neutral-900/70">
+              <div className="truncate font-semibold">{profile?.full_name || profile?.email || session?.user?.email}</div>
+              <div className="mb-2 truncate text-[10px] uppercase tracking-wide text-slate-500">{profile?.role || "member"} · {cloudStatus}</div>
+              <Button variant="outline" onClick={onSignOut} className="h-7 w-full rounded-lg px-2 text-[10px]">
+                <LogOut size={12} className="mr-1" /> Sign out
+              </Button>
+            </div>
+          )}
         </aside>
 
         <main
@@ -1308,6 +1467,8 @@ export default function NoteTaskAppV1() {
               updateTask={updateTask}
               toggleSubtask={toggleSubtask}
               addSubtask={addSubtask}
+              updateSubtask={updateSubtask}
+              removeSubtask={removeSubtask}
               removeTask={removeTask}
               toggleTaskTag={toggleTaskTag}
               allTasks={tasks}
@@ -1353,7 +1514,6 @@ export default function NoteTaskAppV1() {
               allTasks={tasks}
               tableColumns={tableColumns}
               openTaskPopup={openTaskPopup}
-              importTasksFromCsv={importTasksFromCsv}
             />
           )}
 
@@ -1385,18 +1545,30 @@ export default function NoteTaskAppV1() {
               openTaskPopup={openTaskPopup}
             />
           )}
+          {activeView === "User Management" && canManageUsers && (
+            <UserManagementView currentProfile={profile} />
+          )}
+          
           {activeView === "Master Data" && (
             <MasterDataView
               groups={groups}
+              tags={tags}
+              statuses={statuses}
+              priorities={priorities}
               statusColors={statusColors}
               priorityColors={priorityColors}
               tagColors={tagColors}
               updateStatusColor={updateStatusColor}
               updatePriorityColor={updatePriorityColor}
               updateTagColor={updateTagColor}
-              tags={tags}
-              statuses={statuses}
-              priorities={priorities}
+              defaultGroupMode={defaultGroupMode}
+              applyDefaultGroupMode={applyDefaultGroupMode}
+              newGroup={newGroup}
+              setNewGroup={setNewGroup}
+              addGroup={addGroup}
+              newTag={newTag}
+              setNewTag={setNewTag}
+              addTag={addTag}
               newStatus={newStatus}
               setNewStatus={setNewStatus}
               addStatus={addStatus}
@@ -1414,14 +1586,6 @@ export default function NoteTaskAppV1() {
               cancelEditMaster={cancelEditMaster}
               renameMasterItem={renameMasterItem}
               deleteMasterItem={deleteMasterItem}
-              defaultGroupMode={defaultGroupMode}
-              applyDefaultGroupMode={applyDefaultGroupMode}
-              newGroup={newGroup}
-              setNewGroup={setNewGroup}
-              addGroup={addGroup}
-              newTag={newTag}
-              setNewTag={setNewTag}
-              addTag={addTag}
               reorderList={reorderList}
               tableColumns={tableColumns}
               toggleTableColumn={toggleTableColumn}
@@ -1442,6 +1606,8 @@ export default function NoteTaskAppV1() {
               updateTask={updateTask}
               toggleSubtask={toggleSubtask}
               addSubtask={addSubtask}
+              updateSubtask={updateSubtask}
+              removeSubtask={removeSubtask}
               removeTask={removeTask}
               onClose={closeTaskPopup}
             />
@@ -1470,7 +1636,6 @@ function StatCard({ icon: Icon, label, value }) {
 }
 
 function HomeView(props) {
-  const safeProps = props || {};
   const {
     groups,
     statuses,
@@ -1500,6 +1665,8 @@ function HomeView(props) {
     updateTask,
     toggleSubtask,
     addSubtask,
+    updateSubtask,
+    removeSubtask,
     removeTask,
     toggleTaskTag,
     allTasks,
@@ -1509,7 +1676,7 @@ function HomeView(props) {
     homeFiltersOpen,
     setHomeFiltersOpen,
     openTaskPopup,
-  } = safeProps;
+  } = props;
 
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedTaskIds, setSelectedTaskIds] = useState([]);
@@ -1567,7 +1734,6 @@ function HomeView(props) {
     let order = [];
     if (homeGroupBy === "Group") order = groups;
     if (homeGroupBy === "Status") order = statuses;
-    if (homeGroupBy === "Priority") order = priorities;
     if (homeGroupBy === "Tag") order = tags.map((tag) => `#${tag}`);
 
     const entries = Object.entries(bucket).map(([title, tasks]) => ({ title, tasks }));
@@ -1578,7 +1744,7 @@ function HomeView(props) {
       return entries.sort((a, b) => order.indexOf(a.title) - order.indexOf(b.title));
     }
     return entries;
-  }, [openTasks, homeGroupBy, groups, statuses, priorities, tags]);
+  }, [openTasks, homeGroupBy, groups, statuses, tags]);
 
   return (
     <div className={classNames("relative min-w-0", homeMinimalMode ? "" : "grid grid-cols-1 gap-2 xl:grid-cols-[260px_minmax(0,1fr)] 2xl:grid-cols-[280px_minmax(0,1fr)]")}>
@@ -1594,7 +1760,7 @@ function HomeView(props) {
                 value={quickTitle}
                 onChange={(event) => setQuickTitle(event.target.value)}
                 placeholder="Write a quick task or note..."
-                className="h-8 rounded-xl text-xs"
+                className="h-9 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-slate-400"
                 onKeyDown={(event) => {
                   if (event.key === "Enter") addQuickTask();
                 }}
@@ -1603,7 +1769,7 @@ function HomeView(props) {
                 value={quickRemark}
                 onChange={(event) => setQuickRemark(event.target.value)}
                 placeholder="Remark / details"
-                className="min-h-12 rounded-xl text-xs"
+                className="min-h-[78px] w-full min-w-0 resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-slate-400"
               />
               <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
                 <select
@@ -1810,6 +1976,7 @@ function HomeView(props) {
                     task={task}
                     statuses={statuses}
                     groups={groups}
+                    priorities={priorities}
                     tags={tags}
                     statusColors={statusColors}
                     priorityColors={priorityColors}
@@ -1817,6 +1984,8 @@ function HomeView(props) {
                     updateTask={updateTask}
                     toggleSubtask={toggleSubtask}
                     addSubtask={addSubtask}
+                    updateSubtask={updateSubtask}
+                    removeSubtask={removeSubtask}
                     removeTask={removeTask}
                     toggleTaskTag={toggleTaskTag}
                     allTasks={allTasks}
@@ -1906,11 +2075,11 @@ function CompactDatePicker({ value, onChange, title = "Deadline" }) {
   return (
     <label
       htmlFor={inputId}
-      className="relative flex h-6 w-full min-w-0 cursor-pointer items-center justify-between gap-1 rounded-md border border-slate-200 bg-white px-1.5 text-[10px] leading-none text-slate-700 shadow-sm hover:border-slate-300"
+      className="relative flex h-8 w-full min-w-0 cursor-pointer items-center justify-between gap-1.5 rounded-lg border border-slate-200 bg-white px-2 text-xs leading-normal text-slate-900 shadow-sm"
       title={title}
     >
       <span className="min-w-0 truncate">{formatDate(value) || "Select date"}</span>
-      <CalendarDays size={11} className="shrink-0 text-slate-400" />
+      <CalendarDays size={13} className="shrink-0 text-slate-400" />
       <input
         id={inputId}
         type="date"
@@ -1923,7 +2092,7 @@ function CompactDatePicker({ value, onChange, title = "Deadline" }) {
   );
 }
 
-function TaskCard({ task, statuses, groups, priorities = priorityOptions, tags, statusColors, priorityColors, tagColors, updateTask, toggleSubtask, addSubtask, removeTask, toggleTaskTag, allTasks, openTaskPopup }) {
+function TaskCard({ task, statuses, groups, priorities = ["High", "Medium", "Low"], tags, statusColors, priorityColors, tagColors, updateTask, toggleSubtask, addSubtask, updateSubtask = () => {}, removeSubtask = () => {}, removeTask, toggleTaskTag, allTasks, openTaskPopup }) {
   const progress = getProgress(task);
   const [expanded, setExpanded] = useState(false);
   const taskPriorityAccent = {
@@ -1943,16 +2112,29 @@ function TaskCard({ task, statuses, groups, priorities = priorityOptions, tags, 
       <Card className="task-card min-w-0 overflow-hidden rounded-lg border-slate-200 bg-white/95 shadow-sm ring-1 ring-slate-100">
         <CardContent className="relative p-2 pl-3">
           <div className={classNames("absolute left-0 top-0 h-full w-1", taskPriorityAccent)} />
-          <div className="grid min-w-0 grid-cols-1 gap-1.5 md:grid-cols-[minmax(0,1fr)_160px_58px] md:items-center">
+
+          <div className="grid min-w-0 grid-cols-1 gap-1.5 md:grid-cols-[minmax(0,1fr)_290px_42px] md:items-center">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-1">
-                <button type="button" onClick={(event) => { event.stopPropagation(); openTaskPopup(task.id); }} className="min-w-0 truncate text-left text-sm font-bold leading-tight text-slate-900 hover:underline" title={task.title}>{task.title}</button>
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openTaskPopup(task.id);
+                  }}
+                  className="min-w-0 truncate text-left text-sm font-bold leading-tight text-slate-900 hover:underline"
+                  title={task.title}
+                >
+                  {task.title}
+                </button>
+
                 <span
                   className={classNames("light-chip rounded-full border px-1.5 py-0 text-[9px] font-medium", statusBadgeClass(task.status))}
                   style={statusChipStyle(task.status, statusColors)}
                 >
                   {task.status}
                 </span>
+
                 <span
                   className={classNames("light-chip rounded-full border px-1.5 py-0 text-[9px] font-medium", priorityBadgeClass(task.priority))}
                   style={priorityChipStyle(task.priority, priorityColors)}
@@ -1960,17 +2142,21 @@ function TaskCard({ task, statuses, groups, priorities = priorityOptions, tags, 
                   {task.priority}
                 </span>
               </div>
+
               <div className="mt-0.5 min-w-0 truncate text-xs text-slate-400" title={task.remarks || "No remark"}>
                 {task.remarks ? `Remark: ${task.remarks}` : "No remark"}
               </div>
             </div>
 
-            <div className="grid min-w-0 max-w-[160px] grid-cols-2 items-center gap-x-1 gap-y-1.5 py-0.5" onClick={(event) => event.stopPropagation()}>
+            <div
+              className="grid w-[290px] shrink-0 grid-cols-2 items-center gap-x-1.5 gap-y-1.5 py-0.5"
+              onClick={(event) => event.stopPropagation()}
+            >
               <select
                 value={task.status}
                 onClick={(event) => event.stopPropagation()}
                 onChange={(event) => updateTask(task.id, { status: event.target.value })}
-                className="h-6 w-full min-w-0 rounded-md border border-slate-200 bg-white px-1.5 text-[10px] leading-none shadow-sm"
+                className="h-8 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2 text-xs leading-normal text-slate-900 shadow-sm"
                 title="Status"
               >
                 {statuses.map((status) => (
@@ -1982,7 +2168,7 @@ function TaskCard({ task, statuses, groups, priorities = priorityOptions, tags, 
                 value={task.group}
                 onClick={(event) => event.stopPropagation()}
                 onChange={(event) => updateTask(task.id, { group: event.target.value })}
-                className="h-6 w-full min-w-0 rounded-md border border-slate-200 bg-white px-1.5 text-[10px] leading-none shadow-sm"
+                className="h-8 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2 text-xs leading-normal text-slate-900 shadow-sm"
                 title="Group"
               >
                 {groups.map((group) => (
@@ -1994,7 +2180,7 @@ function TaskCard({ task, statuses, groups, priorities = priorityOptions, tags, 
                 value={task.priority}
                 onClick={(event) => event.stopPropagation()}
                 onChange={(event) => updateTask(task.id, { priority: event.target.value })}
-                className="h-6 w-full min-w-0 rounded-md border border-slate-200 bg-white px-1.5 text-[10px] leading-none shadow-sm"
+                className="h-8 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2 text-xs leading-normal text-slate-900 shadow-sm"
                 title="Priority"
               >
                 {priorities.map((priority) => (
@@ -2002,7 +2188,7 @@ function TaskCard({ task, statuses, groups, priorities = priorityOptions, tags, 
                 ))}
               </select>
 
-              <div onClick={(event) => event.stopPropagation()}>
+              <div className="min-w-0" onClick={(event) => event.stopPropagation()}>
                 <CompactDatePicker
                   value={task.deadline}
                   onChange={(event) => updateTask(task.id, { deadline: event.target.value })}
@@ -2012,8 +2198,14 @@ function TaskCard({ task, statuses, groups, priorities = priorityOptions, tags, 
             </div>
 
             <div className="flex min-w-0 items-center justify-end gap-1" onClick={(event) => event.stopPropagation()}>
-              <Button variant="ghost" size="icon" onClick={() => removeTask(task.id)} className="h-6 w-6 rounded-md text-slate-400 hover:text-red-600">
-                <Trash2 size={12} />
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => removeTask(task.id)}
+                className="h-8 w-8 rounded-md text-slate-400 hover:text-red-600"
+                title="Delete task"
+              >
+                <Trash2 size={14} />
               </Button>
             </div>
           </div>
@@ -2025,6 +2217,7 @@ function TaskCard({ task, statuses, groups, priorities = priorityOptions, tags, 
                 <div className="h-1.5 rounded-full progress-fill" style={{ width: `${progress}%` }} />
               </div>
             </div>
+
             <div className="flex min-w-0 flex-wrap items-center gap-1 overflow-hidden">
               {task.tags.slice(0, 3).map((tag, tagIndex) => (
                 <span
@@ -2035,43 +2228,102 @@ function TaskCard({ task, statuses, groups, priorities = priorityOptions, tags, 
                   #{tag}
                 </span>
               ))}
+
               {task.tags.length > 3 && <span className="text-[9px] text-slate-400">+{task.tags.length - 3}</span>}
               <span className="text-[10px] text-slate-500">{task.group}</span>
               <span className="text-[10px] text-slate-500">{formatDate(task.deadline)}</span>
-              {task.dependency && <span className="min-w-0 truncate text-[10px] text-slate-500" title={task.dependency}>Depends: {task.dependency}</span>}
+
+              {task.dependency && (
+                <span className="min-w-0 truncate text-[10px] text-slate-500" title={task.dependency}>
+                  Depends: {task.dependency}
+                </span>
+              )}
             </div>
           </div>
 
           {expanded && (
-            <div className="mt-2 grid grid-cols-1 gap-2 border-t border-slate-100 pt-2 lg:grid-cols-2" onClick={(event) => event.stopPropagation()}>
+            <div
+              className="mt-2 grid grid-cols-1 gap-2 border-t border-slate-100 pt-2 lg:grid-cols-[minmax(360px,0.9fr)_minmax(520px,1.1fr)]"
+              onClick={(event) => event.stopPropagation()}
+            >
+              {/* Left side - Subtasks */}
               <div>
                 <div className="mb-1 flex items-center justify-between">
                   <div className="text-[10px] font-medium uppercase tracking-wide text-slate-400">Subtasks</div>
-                  <Button variant="outline" size="sm" onClick={(event) => { event.stopPropagation(); addSubtask(task.id); }} className="h-7 rounded-md px-2 text-[10px]">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      addSubtask(task.id);
+                    }}
+                    className="h-7 rounded-md px-2 text-[10px]"
+                  >
                     Add
                   </Button>
                 </div>
-                <div className="space-y-1">
+
+                <div className="ml-3 space-y-1 border-l-2 border-slate-100 pl-3">
                   {task.subtasks.length ? (
                     task.subtasks.map((subtask) => (
-                      <label key={subtask.id} className="flex items-center gap-2 rounded-md bg-slate-50 px-2 py-1 text-[11px]">
-                        <input type="checkbox" checked={subtask.done} onClick={(event) => event.stopPropagation()} onChange={() => toggleSubtask(task.id, subtask.id)} />
-                        <span className={subtask.done ? "text-slate-400 line-through" : "text-slate-700"}>{subtask.title}</span>
-                      </label>
+                      <div
+                        key={subtask.id}
+                        className="flex items-center gap-2 rounded-md border-l-2 border-slate-200 bg-slate-50 px-3 py-1 text-[11px]"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={subtask.done}
+                          onClick={(event) => event.stopPropagation()}
+                          onChange={() => toggleSubtask(task.id, subtask.id)}
+                          className="h-4 w-4 shrink-0"
+                          title="Mark subtask done"
+                        />
+                        <input
+                          value={subtask.title}
+                          onClick={(event) => event.stopPropagation()}
+                          onChange={(event) => updateSubtask(task.id, subtask.id, { title: event.target.value })}
+                          className={classNames(
+                            "h-6 min-w-0 flex-1 rounded-md border border-slate-200 bg-white px-2 text-[11px] outline-none focus:border-slate-400",
+                            subtask.done ? "text-slate-400 line-through" : "text-slate-700"
+                          )}
+                          title="Edit subtask"
+                        />
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            removeSubtask(task.id, subtask.id);
+                          }}
+                          className="shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-red-500 hover:bg-red-50"
+                          title="Delete subtask"
+                        >
+                          Delete
+                        </button>
+                      </div>
                     ))
                   ) : (
-                    <div className="rounded-md bg-slate-50 px-2 py-1.5 text-[11px] text-slate-400">No subtasks</div>
+                    <div className="rounded-md bg-slate-50 px-3 py-1.5 text-[11px] text-slate-400">No subtasks</div>
                   )}
                 </div>
               </div>
 
-              <div className="space-y-1.5">
-                <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
+              {/* Right side - Row 1 Remark, Row 2 Dependency + Completion, Row 3 Tags */}
+              <div className="space-y-2">
+                <Textarea
+                  value={task.remarks}
+                  onClick={(event) => event.stopPropagation()}
+                  onChange={(event) => updateTask(task.id, { remarks: event.target.value })}
+                  className="min-h-[110px] w-full resize-y rounded-md text-[11px]"
+                  placeholder="Add latest remark..."
+                />
+
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <select
                     value={task.dependency}
                     onClick={(event) => event.stopPropagation()}
                     onChange={(event) => updateTask(task.id, { dependency: event.target.value })}
-                    className="h-6 w-full min-w-0 rounded-md border border-slate-200 bg-white px-1.5 text-[10px] leading-none shadow-sm"
+                    className="h-8 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2 text-xs leading-normal text-slate-900 shadow-sm"
+                    title="Dependency"
                   >
                     <option value="">No dependency</option>
                     {allTasks
@@ -2082,34 +2334,38 @@ function TaskCard({ task, statuses, groups, priorities = priorityOptions, tags, 
                         </option>
                       ))}
                   </select>
+
                   <Input
                     type="date"
                     value={task.completedAt}
                     onClick={(event) => event.stopPropagation()}
                     onChange={(event) => updateTask(task.id, { completedAt: event.target.value })}
-                    className="h-7 rounded-md px-1 text-[10px]"
+                    className="h-8 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs leading-normal text-slate-900 shadow-sm"
+                    title="Actual completion date"
                   />
                 </div>
-                <Textarea
-                  value={task.remarks}
-                  onClick={(event) => event.stopPropagation()}
-                  onChange={(event) => updateTask(task.id, { remarks: event.target.value })}
-                  className="min-h-12 rounded-md text-[11px]"
-                  placeholder="Add latest remark..."
-                />
+
                 <div className="flex flex-wrap gap-1">
-                  {tags.map((tag) => (
-                    <button
-                      key={tag}
-                      onClick={(event) => { event.stopPropagation(); toggleTaskTag(task.id, tag); }}
-                      className={classNames(
-                        "tag-chip rounded-full border px-1.5 py-0 text-[9px] font-medium transition",
-                        task.tags.includes(tag) ? tagChipClass(tags.indexOf(tag)) : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
-                      )}
-                    >
-                      #{tag}
-                    </button>
-                  ))}
+                  {tags.map((tag, tagIndex) => {
+                    const active = task.tags.includes(tag);
+
+                    return (
+                      <button
+                        key={tag}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          toggleTaskTag(task.id, tag);
+                        }}
+                        className={classNames(
+                          "tag-chip rounded-full border px-1.5 py-0 text-[9px] font-medium transition",
+                          active ? tagChipClass(tagIndex) : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+                        )}
+                        style={active ? tagChipStyle(tag, tagColors, tagIndex) : undefined}
+                      >
+                        #{tag}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -2120,9 +2376,8 @@ function TaskCard({ task, statuses, groups, priorities = priorityOptions, tags, 
   );
 }
 
-function TableView({ statusColors, priorityColors, tagColors, tasks, statuses, groups, priorities = ["High", "Medium", "Low"], tags, tableGroupBy, setTableGroupBy, updateTask, removeTask, allTasks, tableColumns, openTaskPopup, importTasksFromCsv }) {
+function TableView({ statusColors, priorityColors, tagColors, tasks, statuses, groups, priorities = ["High", "Medium", "Low"], tags, tableGroupBy, setTableGroupBy, updateTask, removeTask, allTasks, tableColumns, openTaskPopup }) {
   const [sortConfig, setSortConfig] = useState({ key: "deadline", direction: "asc" });
-  const csvInputRef = useRef(null);
 
   function getSortValue(task, key) {
     if (key === "task") return task.title.toLowerCase();
@@ -2195,7 +2450,6 @@ function TableView({ statusColors, priorityColors, tagColors, tasks, statuses, g
     let order = [];
     if (tableGroupBy === "Group") order = groups;
     if (tableGroupBy === "Status") order = statuses;
-    if (tableGroupBy === "Priority") order = priorities;
     if (tableGroupBy === "Tag") order = tags.map((tag) => `#${tag}`);
 
     const entries = Object.entries(bucket).map(([title, tasks]) => ({ title, tasks }));
@@ -2206,7 +2460,7 @@ function TableView({ statusColors, priorityColors, tagColors, tasks, statuses, g
       return entries.sort((a, b) => order.indexOf(a.title) - order.indexOf(b.title));
     }
     return entries;
-  }, [sortedTasks, tableGroupBy, groups, statuses, priorities, tags]);
+  }, [sortedTasks, tableGroupBy, groups, statuses, tags]);
 
   return (
     <div className="space-y-2">
@@ -2218,25 +2472,6 @@ function TableView({ statusColors, priorityColors, tagColors, tasks, statuses, g
           </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <div className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">{sortedTasks.length} tasks</div>
-            <input
-              ref={csvInputRef}
-              type="file"
-              accept=".csv,text/csv"
-              className="hidden"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) importTasksFromCsv?.(file);
-                event.target.value = "";
-              }}
-            />
-            <Button
-              variant="outline"
-              onClick={() => csvInputRef.current?.click()}
-              className="h-8 rounded-xl px-2 text-xs"
-              title="Upload tasks from CSV"
-            >
-              Upload CSV
-            </Button>
             <select
               aria-label="Group table by"
               title="Group table by"
@@ -2681,7 +2916,7 @@ function CalendarView({ statusColors, priorityColors, tasks, openTaskPopup, cale
   );
 }
 
-function GanttView({ statusColors, priorityColors, tasks, groups, statuses, priorities = priorityOptions, tags, ganttGroupBy, setGanttGroupBy, updateTask, allTasks, ganttColumns, toggleGanttColumn, openTaskPopup }) {
+function GanttView({ statusColors, priorityColors, tasks, groups, statuses, priorities = ["High", "Medium", "Low"], tags, ganttGroupBy, setGanttGroupBy, updateTask, allTasks, ganttColumns, toggleGanttColumn, openTaskPopup }) {
   const sorted = [...tasks].sort((a, b) => getTaskStartDate(a).localeCompare(getTaskStartDate(b)));
   const safeTasks = sorted.length ? sorted : [];
   const start = safeTasks.length
@@ -3077,7 +3312,7 @@ function GanttView({ statusColors, priorityColors, tasks, groups, statuses, prio
   );
 }
 
-function TaskDetailModal({ statusColors, priorityColors, tagColors, task, statuses, groups, priorities = priorityOptions, tags, allTasks, updateTask, toggleSubtask, addSubtask, removeTask, onClose }) {
+function TaskDetailModal({ statusColors, priorityColors, tagColors, task, statuses, groups, priorities = ["High", "Medium", "Low"], tags, allTasks, updateTask, toggleSubtask, addSubtask, updateSubtask = () => {}, removeSubtask = () => {}, removeTask, onClose }) {
   const [draft, setDraft] = useState(task || null);
 
   useEffect(() => {
@@ -3127,19 +3362,39 @@ function TaskDetailModal({ statusColors, priorityColors, tagColors, task, status
         </div>
 
         <div className="max-h-[calc(92vh-62px)] overflow-y-auto p-4">
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1.3fr_0.7fr]">
-            <div className="space-y-3">
-              <div>
-                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Task title</label>
-                <Input value={draft.title} onChange={(e) => updateDraft({ title: e.target.value })} className="rounded-xl" />
+          <div className="grid min-w-0 grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1.3fr)_minmax(360px,0.7fr)]">
+            <div className="min-w-0 space-y-3">
+              <div className="min-w-0">
+                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                  Task title
+                </label>
+                <Input
+                  value={draft.title}
+                  onChange={(e) => updateDraft({ title: e.target.value })}
+                  className="h-10 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none focus:border-slate-400"
+                />
               </div>
-              <div>
-                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Description</label>
-                <Textarea value={draft.description} onChange={(e) => updateDraft({ description: e.target.value })} className="min-h-20 rounded-xl text-sm" />
+
+              <div className="min-w-0">
+                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                  Description
+                </label>
+                <Textarea
+                  value={draft.description}
+                  onChange={(e) => updateDraft({ description: e.target.value })}
+                  className="min-h-[96px] w-full min-w-0 resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-400"
+                />
               </div>
-              <div>
-                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Remark / latest update</label>
-                <Textarea value={draft.remarks} onChange={(e) => updateDraft({ remarks: e.target.value })} className="min-h-24 rounded-xl text-sm" />
+
+              <div className="min-w-0">
+                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                  Remark / latest update
+                </label>
+                <Textarea
+                  value={draft.remarks}
+                  onChange={(e) => updateDraft({ remarks: e.target.value })}
+                  className="min-h-[140px] w-full min-w-0 resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-400"
+                />
               </div>
 
               <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
@@ -3151,10 +3406,32 @@ function TaskDetailModal({ statusColors, priorityColors, tagColors, task, status
                 </div>
                 <div className="space-y-1.5">
                   {task.subtasks.length ? task.subtasks.map((subtask) => (
-                    <label key={subtask.id} className="flex items-center gap-2 rounded-lg bg-white px-2 py-1.5 text-xs shadow-sm ring-1 ring-slate-100">
-                      <input type="checkbox" checked={subtask.done} onChange={() => toggleSubtask(task.id, subtask.id)} />
-                      <span className={subtask.done ? "text-slate-400 line-through" : "text-slate-700"}>{subtask.title}</span>
-                    </label>
+                    <div key={subtask.id} className="flex items-center gap-2 rounded-lg bg-white px-2 py-1.5 text-xs shadow-sm ring-1 ring-slate-100">
+                      <input
+                        type="checkbox"
+                        checked={subtask.done}
+                        onChange={() => toggleSubtask(task.id, subtask.id)}
+                        title="Mark subtask done"
+                      />
+                      <Input
+                        value={subtask.title}
+                        onChange={(event) => updateSubtask(task.id, subtask.id, { title: event.target.value })}
+                        className={classNames(
+                          "h-7 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2 text-xs outline-none focus:border-slate-400",
+                          subtask.done ? "text-slate-400 line-through" : "text-slate-700"
+                        )}
+                        title="Edit subtask"
+                      />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeSubtask(task.id, subtask.id)}
+                        className="h-7 rounded-lg px-2 text-[10px] text-red-500 hover:text-red-700"
+                        title="Delete subtask"
+                      >
+                        Delete
+                      </Button>
+                    </div>
                   )) : <div className="text-xs text-slate-400">No subtasks yet.</div>}
                 </div>
               </div>
@@ -3240,6 +3517,102 @@ function TaskDetailModal({ statusColors, priorityColors, tagColors, task, status
           </div>
         </div>
       </motion.div>
+    </div>
+  );
+}
+
+
+function UserManagementView({ currentProfile }) {
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState("");
+  const isAdmin = currentProfile?.role === "admin";
+  const roles = ["admin", "director", "manager", "member"];
+
+  async function loadUsers() {
+    setLoading(true);
+    const { data, error } = await supabase.from("user_profiles").select("*").order("created_at", { ascending: false });
+    if (error) setMessage(error.message);
+    else setUsers(data || []);
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    loadUsers();
+  }, []);
+
+  async function updateUser(userId, patch) {
+    if (!isAdmin) return;
+    const { error } = await supabase.from("user_profiles").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", userId);
+    if (error) setMessage(error.message);
+    else {
+      setMessage("User rights updated.");
+      loadUsers();
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <Card className="master-panel rounded-xl border-slate-200 shadow-sm">
+        <CardContent className="p-3">
+          <h2 className="panel-title text-base font-semibold">User Management</h2>
+          <p className="text-xs text-slate-500">Visible only for Admin and Director. Role editing is available only for Admin.</p>
+        </CardContent>
+      </Card>
+
+      <Card className="master-panel rounded-xl border-slate-200 shadow-sm">
+        <CardContent className="p-3">
+          {loading ? (
+            <div className="py-8 text-center text-sm text-slate-500">Loading users...</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[720px] text-left text-xs">
+                <thead className="border-b border-slate-200 text-[10px] uppercase tracking-wide text-slate-400">
+                  <tr>
+                    <th className="px-2 py-2">User</th>
+                    <th className="px-2 py-2">Role</th>
+                    <th className="px-2 py-2">Status</th>
+                    <th className="px-2 py-2">Created</th>
+                    <th className="px-2 py-2">Rights</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.map((user) => (
+                    <tr key={user.id} className="border-b border-slate-100">
+                      <td className="px-2 py-2">
+                        <div className="font-semibold text-slate-900">{user.full_name || "Unnamed user"}</div>
+                        <div className="text-slate-500">{user.email}</div>
+                      </td>
+                      <td className="px-2 py-2">
+                        {isAdmin ? (
+                          <select value={user.role} onChange={(event) => updateUser(user.id, { role: event.target.value })} className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs">
+                            {roles.map((role) => <option key={role}>{role}</option>)}
+                          </select>
+                        ) : (
+                          <span className="rounded-full bg-slate-100 px-2 py-1 font-semibold capitalize text-slate-700">{user.role}</span>
+                        )}
+                      </td>
+                      <td className="px-2 py-2">
+                        {isAdmin ? (
+                          <select value={user.is_active ? "active" : "disabled"} onChange={(event) => updateUser(user.id, { is_active: event.target.value === "active" })} className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs">
+                            <option value="active">Active</option>
+                            <option value="disabled">Disabled</option>
+                          </select>
+                        ) : (
+                          <span>{user.is_active ? "Active" : "Disabled"}</span>
+                        )}
+                      </td>
+                      <td className="px-2 py-2 text-slate-500">{formatDate((user.created_at || "").slice(0, 10))}</td>
+                      <td className="px-2 py-2 text-slate-500">{isAdmin ? "Editable" : "Read only"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {message && <div className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">{message}</div>}
+        </CardContent>
+      </Card>
     </div>
   );
 }
