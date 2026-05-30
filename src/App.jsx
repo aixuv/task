@@ -793,6 +793,23 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
   const [statuses, setStatuses] = useState(initialStatuses);
   const [groups, setGroups] = useState(initialGroups);
   const [tags, setTags] = useState(initialTags);
+  const [priorities, setPriorities] = useState(["High", "Medium", "Low"]);
+  const [newStatus, setNewStatus] = useState("");
+  const [newPriority, setNewPriority] = useState("");
+  const [masterSearch, setMasterSearch] = useState({
+    groups: "",
+    tags: "",
+    statuses: "",
+    priorities: "",
+  });
+  const [masterVisibleCount, setMasterVisibleCount] = useState({
+    groups: 50,
+    tags: 50,
+    statuses: 50,
+    priorities: 50,
+  });
+  const [editingMaster, setEditingMaster] = useState(null);
+  const [editingMasterValue, setEditingMasterValue] = useState("");
   const [search, setSearch] = useState("");
   const [selectedGroup, setSelectedGroup] = useState("All");
   const [selectedTag, setSelectedTag] = useState("All");
@@ -867,6 +884,7 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
         if (Array.isArray(state.statuses)) setStatuses(state.statuses);
         if (Array.isArray(state.groups)) setGroups(state.groups);
         if (Array.isArray(state.tags)) setTags(state.tags);
+        if (Array.isArray(state.priorities) && state.priorities.length) setPriorities(state.priorities);
         if (state.defaultGroupMode) setDefaultGroupMode(state.defaultGroupMode);
         if (state.homeGroupBy) setHomeGroupBy(state.homeGroupBy);
         if (state.tableGroupBy) setTableGroupBy(state.tableGroupBy);
@@ -890,38 +908,74 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
     return () => { ignore = true; };
   }, [session?.user?.id]);
 
-  useEffect(() => {
-    if (!cloudReady || !session?.user?.id) return;
-    const handle = window.setTimeout(async () => {
-      const state = {
-        tasks,
-        statuses,
-        groups,
-        tags,
-        defaultGroupMode,
-        homeGroupBy,
-        tableGroupBy,
-        ganttGroupBy,
-        calendarGroupBy,
-        ganttColumns,
-        kanbanBy,
-        tableColumns,
-        homeMinimalMode,
-        sidebarCollapsed,
-        displayScale,
-        darkMode,
-        statusColors,
-        priorityColors,
-        tagColors,
-        updatedAt: new Date().toISOString(),
-      };
-      const { error } = await supabase
-        .from("user_app_state")
-        .upsert({ user_id: session.user.id, app_key: "note_task_v1", state, updated_at: new Date().toISOString() }, { onConflict: "user_id,app_key" });
-      setCloudStatus(error ? `Cloud save failed: ${error.message}` : "Saved to cloud");
-    }, 600);
-    return () => window.clearTimeout(handle);
-  }, [cloudReady, session?.user?.id, tasks, statuses, groups, tags, defaultGroupMode, homeGroupBy, tableGroupBy, ganttGroupBy, calendarGroupBy, ganttColumns, kanbanBy, tableColumns, homeMinimalMode, sidebarCollapsed, displayScale, darkMode, statusColors, priorityColors, tagColors]);
+useEffect(() => {
+  if (!cloudReady || !session?.user?.id) return;
+
+  const handle = window.setTimeout(async () => {
+    const state = {
+      tasks,
+      statuses,
+      groups,
+      tags,
+      priorities,
+      defaultGroupMode,
+      homeGroupBy,
+      tableGroupBy,
+      ganttGroupBy,
+      calendarGroupBy,
+      ganttColumns,
+      kanbanBy,
+      tableColumns,
+      homeMinimalMode,
+      sidebarCollapsed,
+      displayScale,
+      darkMode,
+      statusColors,
+      priorityColors,
+      tagColors,
+      updatedAt: new Date().toISOString(),
+    };
+
+    const { error } = await supabase
+      .from("user_app_state")
+      .upsert(
+        {
+          user_id: session.user.id,
+          app_key: "note_task_v1",
+          state,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id,app_key" }
+      );
+
+    setCloudStatus(error ? `Cloud save failed: ${error.message}` : "Saved to cloud");
+  }, 600);
+
+  return () => window.clearTimeout(handle);
+}, [
+  cloudReady,
+  session?.user?.id,
+  tasks,
+  statuses,
+  groups,
+  tags,
+  priorities,
+  defaultGroupMode,
+  homeGroupBy,
+  tableGroupBy,
+  ganttGroupBy,
+  calendarGroupBy,
+  ganttColumns,
+  kanbanBy,
+  tableColumns,
+  homeMinimalMode,
+  sidebarCollapsed,
+  displayScale,
+  darkMode,
+  statusColors,
+  priorityColors,
+  tagColors,
+]);
 
 
   const canManageUsers = ["admin", "director"].includes(profile?.role);
@@ -1052,6 +1106,173 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
     setNewTag("");
   }
 
+  function addStatus() {
+  const name = newStatus.trim();
+  if (!name || statuses.includes(name)) return;
+  setStatuses((current) => [...current, name]);
+  setStatusColors((current) => ({ ...current, [name]: "#e5e5e5" }));
+  setNewStatus("");
+}
+
+function addPriority() {
+  const name = newPriority.trim();
+  if (!name || priorities.includes(name)) return;
+  setPriorities((current) => [...current, name]);
+  setPriorityColors((current) => ({ ...current, [name]: "#e5e5e5" }));
+  setNewPriority("");
+}
+
+function updateMasterSearch(type, value) {
+  setMasterSearch((current) => ({ ...current, [type]: value }));
+}
+
+function showMoreMasterItems(type) {
+  setMasterVisibleCount((current) => ({ ...current, [type]: current[type] + 50 }));
+}
+
+function startEditMaster(type, oldName) {
+  setEditingMaster({ type, oldName });
+  setEditingMasterValue(oldName);
+}
+
+function renameMasterItem(type, oldName, newName) {
+  const cleanName = newName.trim();
+
+  if (!cleanName || cleanName === oldName) {
+    cancelEditMaster();
+    return;
+  }
+
+  if (type === "groups") {
+    if (groups.includes(cleanName)) return;
+    setGroups((current) => current.map((item) => (item === oldName ? cleanName : item)));
+    setTasks((current) =>
+      current.map((task) =>
+        task.group === oldName ? { ...task, group: cleanName } : task
+      )
+    );
+  }
+
+  if (type === "tags") {
+    if (tags.includes(cleanName)) return;
+    setTags((current) => current.map((item) => (item === oldName ? cleanName : item)));
+    setTasks((current) =>
+      current.map((task) => ({
+        ...task,
+        tags: task.tags.map((tag) => (tag === oldName ? cleanName : tag)),
+      }))
+    );
+    setTagColors((current) => {
+      const next = { ...current, [cleanName]: current[oldName] || "#e5e5e5" };
+      delete next[oldName];
+      return next;
+    });
+  }
+
+  if (type === "statuses") {
+    if (statuses.includes(cleanName)) return;
+    setStatuses((current) => current.map((item) => (item === oldName ? cleanName : item)));
+    setTasks((current) =>
+      current.map((task) =>
+        task.status === oldName ? { ...task, status: cleanName } : task
+      )
+    );
+    setStatusColors((current) => {
+      const next = { ...current, [cleanName]: current[oldName] || "#e5e5e5" };
+      delete next[oldName];
+      return next;
+    });
+  }
+
+  if (type === "priorities") {
+    if (priorities.includes(cleanName)) return;
+    setPriorities((current) => current.map((item) => (item === oldName ? cleanName : item)));
+    setTasks((current) =>
+      current.map((task) =>
+        task.priority === oldName ? { ...task, priority: cleanName } : task
+      )
+    );
+    setPriorityColors((current) => {
+      const next = { ...current, [cleanName]: current[oldName] || "#e5e5e5" };
+      delete next[oldName];
+      return next;
+    });
+  }
+
+  cancelEditMaster();
+}
+
+function deleteMasterItem(type, name) {
+  const ok = window.confirm(`Delete "${name}"? Existing tasks will be moved to a safe default.`);
+  if (!ok) return;
+
+  if (type === "groups") {
+    if (groups.length <= 1) return;
+    const fallback = groups.find((item) => item !== name) || "Personal";
+
+    setGroups((current) => current.filter((item) => item !== name));
+    setTasks((current) =>
+      current.map((task) =>
+        task.group === name ? { ...task, group: fallback } : task
+      )
+    );
+  }
+
+  if (type === "tags") {
+    setTags((current) => current.filter((item) => item !== name));
+    setTasks((current) =>
+      current.map((task) => ({
+        ...task,
+        tags: task.tags.filter((tag) => tag !== name),
+      }))
+    );
+    setTagColors((current) => {
+      const next = { ...current };
+      delete next[name];
+      return next;
+    });
+  }
+
+  if (type === "statuses") {
+    if (statuses.length <= 1) return;
+    const fallback = statuses.find((item) => item !== name) || "Open";
+
+    setStatuses((current) => current.filter((item) => item !== name));
+    setTasks((current) =>
+      current.map((task) =>
+        task.status === name ? { ...task, status: fallback } : task
+      )
+    );
+    setStatusColors((current) => {
+      const next = { ...current };
+      delete next[name];
+      return next;
+    });
+  }
+
+  if (type === "priorities") {
+    if (priorities.length <= 1) return;
+    const fallback = priorities.find((item) => item !== name) || "Medium";
+
+    setPriorities((current) => current.filter((item) => item !== name));
+    setTasks((current) =>
+      current.map((task) =>
+        task.priority === name ? { ...task, priority: fallback } : task
+      )
+    );
+    setPriorityColors((current) => {
+      const next = { ...current };
+      delete next[name];
+      return next;
+    });
+  }
+}
+
+function cancelEditMaster() {
+  setEditingMaster(null);
+  setEditingMasterValue("");
+}
+
   function updateStatusColor(status, color) {
     setStatusColors((current) => ({ ...current, [status]: color }));
   }
@@ -1076,6 +1297,7 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
     if (type === "groups") setGroups(reorder);
     if (type === "tags") setTags(reorder);
     if (type === "statuses") setStatuses(reorder);
+    if (type === "priorities") setPriorities(reorder);
   }
 
   function toggleTableColumn(columnKey) {
@@ -1358,14 +1580,15 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
           {activeView === "Master Data" && (
             <MasterDataView
               groups={groups}
+              tags={tags}
+              statuses={statuses}
+              priorities={priorities}
               statusColors={statusColors}
               priorityColors={priorityColors}
               tagColors={tagColors}
               updateStatusColor={updateStatusColor}
               updatePriorityColor={updatePriorityColor}
               updateTagColor={updateTagColor}
-              tags={tags}
-              statuses={statuses}
               defaultGroupMode={defaultGroupMode}
               applyDefaultGroupMode={applyDefaultGroupMode}
               newGroup={newGroup}
@@ -1374,6 +1597,23 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
               newTag={newTag}
               setNewTag={setNewTag}
               addTag={addTag}
+              newStatus={newStatus}
+              setNewStatus={setNewStatus}
+              addStatus={addStatus}
+              newPriority={newPriority}
+              setNewPriority={setNewPriority}
+              addPriority={addPriority}
+              masterSearch={masterSearch}
+              updateMasterSearch={updateMasterSearch}
+              masterVisibleCount={masterVisibleCount}
+              showMoreMasterItems={showMoreMasterItems}
+              editingMaster={editingMaster}
+              editingMasterValue={editingMasterValue}
+              setEditingMasterValue={setEditingMasterValue}
+              startEditMaster={startEditMaster}
+              cancelEditMaster={cancelEditMaster}
+              renameMasterItem={renameMasterItem}
+              deleteMasterItem={deleteMasterItem}
               reorderList={reorderList}
               tableColumns={tableColumns}
               toggleTableColumn={toggleTableColumn}
@@ -1758,6 +1998,7 @@ function HomeView(props) {
                     task={task}
                     statuses={statuses}
                     groups={groups}
+                    priorities={priorities}
                     tags={tags}
                     statusColors={statusColors}
                     priorityColors={priorityColors}
@@ -1871,7 +2112,7 @@ function CompactDatePicker({ value, onChange, title = "Deadline" }) {
   );
 }
 
-function TaskCard({ task, statuses, groups, tags, statusColors, priorityColors, tagColors, updateTask, toggleSubtask, addSubtask, removeTask, toggleTaskTag, allTasks, openTaskPopup }) {
+function TaskCard({ task, statuses, groups, priorities, statusColors, priorityColors, tagColors, updateTask, toggleSubtask, addSubtask, removeTask, toggleTaskTag, allTasks, openTaskPopup }) {
   const progress = getProgress(task);
   const [expanded, setExpanded] = useState(false);
   const taskPriorityAccent = {
@@ -1962,9 +2203,9 @@ function TaskCard({ task, statuses, groups, tags, statusColors, priorityColors, 
                 className="h-8 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2 text-xs leading-normal text-slate-900 shadow-sm"
                 title="Priority"
               >
-                <option>High</option>
-                <option>Medium</option>
-                <option>Low</option>
+                {priorities.map((priority) => (
+                  <option key={priority}>{priority}</option>
+                ))}
               </select>
 
               <div className="min-w-0" onClick={(event) => event.stopPropagation()}>
@@ -2342,9 +2583,9 @@ function TableView({ statusColors, priorityColors, tagColors, tasks, statuses, g
                               onChange={(event) => updateTask(task.id, { priority: event.target.value })}
                               className="h-7 w-full min-w-0 rounded-md border border-slate-200 bg-white px-1.5 text-[11px]"
                             >
-                              <option>High</option>
-                              <option>Medium</option>
-                              <option>Low</option>
+                              {priorities.map((priority) => (
+                                <option key={priority}>{priority}</option>
+                              ))}
                             </select>
                           </td>
                         )}
@@ -3179,9 +3420,9 @@ function TaskDetailModal({ statusColors, priorityColors, tagColors, task, status
                 <div>
                   <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Priority</label>
                   <select value={draft.priority} onChange={(e) => updateDraft({ priority: e.target.value })} className="h-9 w-full rounded-xl border border-slate-200 bg-white px-2 text-sm">
-                    <option>High</option>
-                    <option>Medium</option>
-                    <option>Low</option>
+                    {priorities.map((priority) => (
+                      <option key={priority}>{priority}</option>
+                    ))}
                   </select>
                 </div>
                 <div>
@@ -3348,7 +3589,46 @@ function UserManagementView({ currentProfile }) {
   );
 }
 
-function MasterDataView({ groups, tags, statuses, statusColors, priorityColors, tagColors, updateStatusColor, updatePriorityColor, updateTagColor, defaultGroupMode, applyDefaultGroupMode, newGroup, setNewGroup, addGroup, newTag, setNewTag, addTag, reorderList, tableColumns, toggleTableColumn }) {
+function MasterDataView({
+  groups,
+  tags,
+  statuses,
+  priorities,
+  statusColors,
+  priorityColors,
+  tagColors,
+  updateStatusColor,
+  updatePriorityColor,
+  updateTagColor,
+  defaultGroupMode,
+  applyDefaultGroupMode,
+  newGroup,
+  setNewGroup,
+  addGroup,
+  newTag,
+  setNewTag,
+  addTag,
+  newStatus,
+  setNewStatus,
+  addStatus,
+  newPriority,
+  setNewPriority,
+  addPriority,
+  masterSearch,
+  updateMasterSearch,
+  masterVisibleCount,
+  showMoreMasterItems,
+  editingMaster,
+  editingMasterValue,
+  setEditingMasterValue,
+  startEditMaster,
+  cancelEditMaster,
+  renameMasterItem,
+  deleteMasterItem,
+  reorderList,
+  tableColumns,
+  toggleTableColumn,
+}) {
   const groupingOptions = ["None", "Group", "Status", "Priority", "Deadline", "Tag"];
 
   return (
@@ -3357,9 +3637,12 @@ function MasterDataView({ groups, tags, statuses, statusColors, priorityColors, 
         <CardContent className="p-3">
           <h2 className="panel-title mb-1 text-base font-semibold">Default View Settings</h2>
           <p className="mb-2 text-xs text-slate-500">Choose the default grouping mode for Home, Kanban, and Table views.</p>
+
           <div className="grid grid-cols-1 gap-2 md:grid-cols-[220px_1fr] md:items-center">
             <div>
-              <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-slate-400">Default group mode</label>
+              <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-slate-400">
+                Default group mode
+              </label>
               <select
                 value={defaultGroupMode}
                 onChange={(event) => applyDefaultGroupMode(event.target.value)}
@@ -3370,8 +3653,11 @@ function MasterDataView({ groups, tags, statuses, statusColors, priorityColors, 
                 ))}
               </select>
             </div>
+
             <div className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
-              Current default: <span className="font-semibold text-slate-900">{defaultGroupMode}</span>. Use <span className="font-semibold">Group</span> for project-wise work, or <span className="font-semibold">Deadline</span> for date-wise planning.
+              Current default: <span className="font-semibold text-slate-900">{defaultGroupMode}</span>. Use{" "}
+              <span className="font-semibold">Group</span> for project-wise work, or{" "}
+              <span className="font-semibold">Deadline</span> for date-wise planning.
             </div>
           </div>
         </CardContent>
@@ -3381,6 +3667,7 @@ function MasterDataView({ groups, tags, statuses, statusColors, priorityColors, 
         <CardContent className="p-3">
           <h2 className="panel-title mb-1 text-base font-semibold">Table Column Settings</h2>
           <p className="mb-2 text-xs text-slate-500">Select which columns should be visible in Table view.</p>
+
           <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-6">
             {tableColumnOptions.map((column) => (
               <label key={column.key} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs shadow-sm">
@@ -3397,115 +3684,357 @@ function MasterDataView({ groups, tags, statuses, statusColors, priorityColors, 
         </CardContent>
       </Card>
 
-      <Card className="master-panel rounded-xl border-slate-200 shadow-sm">
-        <CardContent className="p-3">
-          <h2 className="panel-title mb-2 text-base font-semibold">Groups / Projects</h2>
-          <div className="mb-2 flex gap-1.5">
-            <Input value={newGroup} onChange={(e) => setNewGroup(e.target.value)} placeholder="New group" className="h-8 rounded-xl text-xs" />
-            <Button onClick={addGroup} className="h-8 rounded-xl px-3 text-xs">Add</Button>
-          </div>
-          <SortableMasterList
-            type="groups"
-            items={groups}
-            reorderList={reorderList}
-            renderItem={(group) => group}
-          />
-        </CardContent>
-      </Card>
+      <MasterCrudPanel
+        title="Groups / Projects"
+        type="groups"
+        items={groups}
+        newValue={newGroup}
+        setNewValue={setNewGroup}
+        addItem={addGroup}
+        searchValue={masterSearch.groups}
+        updateSearch={updateMasterSearch}
+        visibleCount={masterVisibleCount.groups}
+        showMore={showMoreMasterItems}
+        reorderList={reorderList}
+        editingMaster={editingMaster}
+        editingMasterValue={editingMasterValue}
+        setEditingMasterValue={setEditingMasterValue}
+        startEditMaster={startEditMaster}
+        cancelEditMaster={cancelEditMaster}
+        renameMasterItem={renameMasterItem}
+        deleteMasterItem={deleteMasterItem}
+        placeholder="New project"
+        searchPlaceholder="Search projects..."
+      />
 
-      <Card className="master-panel rounded-xl border-slate-200 shadow-sm">
-        <CardContent className="p-3">
-          <h2 className="panel-title mb-2 text-base font-semibold">Tags</h2>
-          <div className="mb-2 flex gap-1.5">
-            <Input value={newTag} onChange={(e) => setNewTag(e.target.value)} placeholder="New tag" className="h-8 rounded-xl text-xs" />
-            <Button onClick={addTag} className="h-8 rounded-xl px-3 text-xs">Add</Button>
-          </div>
-          <SortableMasterList
-            type="tags"
-            items={tags}
-            reorderList={reorderList}
-            renderItem={(tag) => `#${tag}`}
-            getItemClass={() => "tag-chip"}
-            getItemStyle={(tag, index) => tagChipStyle(tag, tagColors, index)}
-            renderRight={(tag) => (
-              <input type="color" value={tagColors[tag] || "#e5e5e5"} onChange={(event) => updateTagColor(tag, event.target.value)} className="h-6 w-8 cursor-pointer rounded border border-slate-200 bg-transparent p-0" title="Tag color" />
-            )}
+      <MasterCrudPanel
+        title="Tags"
+        type="tags"
+        items={tags}
+        newValue={newTag}
+        setNewValue={setNewTag}
+        addItem={addTag}
+        searchValue={masterSearch.tags}
+        updateSearch={updateMasterSearch}
+        visibleCount={masterVisibleCount.tags}
+        showMore={showMoreMasterItems}
+        reorderList={reorderList}
+        editingMaster={editingMaster}
+        editingMasterValue={editingMasterValue}
+        setEditingMasterValue={setEditingMasterValue}
+        startEditMaster={startEditMaster}
+        cancelEditMaster={cancelEditMaster}
+        renameMasterItem={renameMasterItem}
+        deleteMasterItem={deleteMasterItem}
+        placeholder="New tag"
+        searchPlaceholder="Search tags..."
+        renderItem={(tag) => `#${tag}`}
+        getItemClass={() => "tag-chip"}
+        getItemStyle={(tag, index) => tagChipStyle(tag, tagColors, index)}
+        renderRight={(tag) => (
+          <input
+            type="color"
+            value={tagColors[tag] || "#e5e5e5"}
+            onChange={(event) => updateTagColor(tag, event.target.value)}
+            className="h-6 w-8 cursor-pointer rounded border border-slate-200 bg-transparent p-0"
+            title="Tag color"
           />
-        </CardContent>
-      </Card>
+        )}
+      />
 
-      <Card className="master-panel rounded-xl border-slate-200 shadow-sm">
-        <CardContent className="p-3">
-          <h2 className="panel-title mb-2 text-base font-semibold">Statuses</h2>
-          <p className="mb-2 text-xs text-slate-500">Drag statuses to control Status group order in Home, Kanban, and Table.</p>
-          <SortableMasterList
-            type="statuses"
-            items={statuses}
-            reorderList={reorderList}
-            renderItem={(status) => status}
-            getItemClass={(status) => statusBadgeClass(status)}
-            getItemStyle={(status) => statusChipStyle(status, statusColors)}
-            renderRight={(status) => (
-              <input type="color" value={statusColors[status] || "#e5e5e5"} onChange={(event) => updateStatusColor(status, event.target.value)} className="h-6 w-8 cursor-pointer rounded border border-slate-200 bg-transparent p-0" title="Status color" />
-            )}
+      <MasterCrudPanel
+        title="Statuses"
+        type="statuses"
+        items={statuses}
+        newValue={newStatus}
+        setNewValue={setNewStatus}
+        addItem={addStatus}
+        searchValue={masterSearch.statuses}
+        updateSearch={updateMasterSearch}
+        visibleCount={masterVisibleCount.statuses}
+        showMore={showMoreMasterItems}
+        reorderList={reorderList}
+        editingMaster={editingMaster}
+        editingMasterValue={editingMasterValue}
+        setEditingMasterValue={setEditingMasterValue}
+        startEditMaster={startEditMaster}
+        cancelEditMaster={cancelEditMaster}
+        renameMasterItem={renameMasterItem}
+        deleteMasterItem={deleteMasterItem}
+        placeholder="New status"
+        searchPlaceholder="Search statuses..."
+        description="Drag statuses to control Status group order in Home, Kanban, and Table."
+        getItemClass={(status) => statusBadgeClass(status)}
+        getItemStyle={(status) => statusChipStyle(status, statusColors)}
+        renderRight={(status) => (
+          <input
+            type="color"
+            value={statusColors[status] || "#e5e5e5"}
+            onChange={(event) => updateStatusColor(status, event.target.value)}
+            className="h-6 w-8 cursor-pointer rounded border border-slate-200 bg-transparent p-0"
+            title="Status color"
           />
-        </CardContent>
-      </Card>
+        )}
+      />
 
-      <Card className="master-panel rounded-xl border-slate-200 shadow-sm">
-        <CardContent className="p-3">
-          <h2 className="panel-title mb-2 text-base font-semibold">Priorities</h2>
-          <p className="mb-2 text-xs text-slate-500">Set custom colors for priority chips.</p>
-          <div className="space-y-1.5">
-            {priorityOptions.map((priority) => (
-              <div key={priority} className="master-list-item flex items-center justify-between rounded-xl border px-2 py-1.5 text-xs shadow-sm" style={priorityChipStyle(priority, priorityColors)}>
-                <span className="font-semibold">{priority}</span>
-                <input type="color" value={priorityColors[priority] || "#e5e5e5"} onChange={(event) => updatePriorityColor(priority, event.target.value)} className="h-6 w-8 cursor-pointer rounded border border-slate-200 bg-transparent p-0" title="Priority color" />
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+      <MasterCrudPanel
+        title="Priorities"
+        type="priorities"
+        items={priorities}
+        newValue={newPriority}
+        setNewValue={setNewPriority}
+        addItem={addPriority}
+        searchValue={masterSearch.priorities}
+        updateSearch={updateMasterSearch}
+        visibleCount={masterVisibleCount.priorities}
+        showMore={showMoreMasterItems}
+        reorderList={reorderList}
+        editingMaster={editingMaster}
+        editingMasterValue={editingMasterValue}
+        setEditingMasterValue={setEditingMasterValue}
+        startEditMaster={startEditMaster}
+        cancelEditMaster={cancelEditMaster}
+        renameMasterItem={renameMasterItem}
+        deleteMasterItem={deleteMasterItem}
+        placeholder="New priority"
+        searchPlaceholder="Search priorities..."
+        description="Create, edit, delete, reorder, and color task priorities."
+        getItemClass={(priority) => priorityBadgeClass(priority)}
+        getItemStyle={(priority) => priorityChipStyle(priority, priorityColors)}
+        renderRight={(priority) => (
+          <input
+            type="color"
+            value={priorityColors[priority] || "#e5e5e5"}
+            onChange={(event) => updatePriorityColor(priority, event.target.value)}
+            className="h-6 w-8 cursor-pointer rounded border border-slate-200 bg-transparent p-0"
+            title="Priority color"
+          />
+        )}
+      />
     </div>
   );
 }
 
-function SortableMasterList({ type, items, reorderList, renderItem, getItemClass, getItemStyle, renderRight }) {
-  const [dragIndex, setDragIndex] = useState(null);
+function MasterCrudPanel({
+  title,
+  type,
+  items,
+  newValue,
+  setNewValue,
+  addItem,
+  searchValue,
+  updateSearch,
+  visibleCount,
+  showMore,
+  reorderList,
+  editingMaster,
+  editingMasterValue,
+  setEditingMasterValue,
+  startEditMaster,
+  cancelEditMaster,
+  renameMasterItem,
+  deleteMasterItem,
+  placeholder,
+  searchPlaceholder,
+  description,
+  renderItem,
+  getItemClass,
+  getItemStyle,
+  renderRight,
+}) {
+  const filteredItems = items.filter((item) =>
+    item.toLowerCase().includes((searchValue || "").toLowerCase())
+  );
+
+  const visibleItems = filteredItems.slice(0, visibleCount);
+  const hasMore = filteredItems.length > visibleItems.length;
 
   return (
-    <div className="space-y-1.5">
-      {items.map((item, index) => (
-        <div
-          key={item}
-          draggable
-          onDragStart={() => setDragIndex(index)}
-          onDragOver={(event) => event.preventDefault()}
-          onDrop={() => {
-            reorderList(type, dragIndex, index);
-            setDragIndex(null);
-          }}
-          onDragEnd={() => setDragIndex(null)}
-          className={classNames(
-            "master-list-item flex cursor-grab items-center justify-between rounded-xl border bg-white px-2 py-1.5 text-xs shadow-sm transition active:cursor-grabbing",
-            dragIndex === index ? "scale-[0.99] border-slate-400 opacity-60" : "border-slate-200 hover:bg-slate-50",
-            getItemClass ? getItemClass(item, index) : ""
-          )}
-          style={getItemStyle ? getItemStyle(item, index) : undefined}
-          title="Drag to reorder"
-        >
-          <div className="flex min-w-0 items-center gap-2">
-            <span className="master-list-index flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[10px] font-semibold text-slate-500">
-              {index + 1}
-            </span>
-            <span className="master-list-name min-w-0 truncate font-medium">{renderItem(item)}</span>
+    <Card className="master-panel rounded-xl border-slate-200 shadow-sm">
+      <CardContent className="p-3">
+        <div className="mb-2 flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <h2 className="panel-title text-base font-semibold">{title}</h2>
+            <p className="text-xs text-slate-500">
+              {description || `${items.length} items`}
+            </p>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
-            {renderRight ? renderRight(item, index) : null}
-            <span className="drag-label text-[10px] text-slate-400">drag</span>
-          </div>
+          <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-500">
+            {items.length}
+          </span>
         </div>
-      ))}
+
+        <div className="mb-2 grid grid-cols-[minmax(0,1fr)_74px] gap-1.5">
+          <Input
+            value={newValue}
+            onChange={(e) => setNewValue(e.target.value)}
+            placeholder={placeholder}
+            className="h-8 min-w-0 rounded-xl text-xs"
+            onKeyDown={(event) => {
+              if (event.key === "Enter") addItem();
+            }}
+          />
+          <Button onClick={addItem} className="h-8 rounded-xl px-3 text-xs">
+            Add
+          </Button>
+        </div>
+
+        <Input
+          value={searchValue || ""}
+          onChange={(e) => updateSearch(type, e.target.value)}
+          placeholder={searchPlaceholder}
+          className="mb-2 h-8 rounded-xl text-xs"
+        />
+
+        <SortableMasterList
+          type={type}
+          items={visibleItems}
+          allItems={items}
+          reorderList={reorderList}
+          renderItem={renderItem}
+          getItemClass={getItemClass}
+          getItemStyle={getItemStyle}
+          renderRight={renderRight}
+          editingMaster={editingMaster}
+          editingMasterValue={editingMasterValue}
+          setEditingMasterValue={setEditingMasterValue}
+          startEditMaster={startEditMaster}
+          cancelEditMaster={cancelEditMaster}
+          renameMasterItem={renameMasterItem}
+          deleteMasterItem={deleteMasterItem}
+        />
+
+        {hasMore && (
+          <Button
+            variant="outline"
+            onClick={() => showMore(type)}
+            className="mt-2 h-8 w-full rounded-xl text-xs"
+          >
+            Show more {filteredItems.length - visibleItems.length}
+          </Button>
+        )}
+
+        {!filteredItems.length && (
+          <div className="rounded-xl border border-dashed border-slate-200 px-3 py-4 text-center text-xs text-slate-400">
+            No matching item found.
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function SortableMasterList({
+  type,
+  items,
+  allItems,
+  reorderList,
+  renderItem,
+  getItemClass,
+  getItemStyle,
+  renderRight,
+  editingMaster,
+  editingMasterValue,
+  setEditingMasterValue,
+  startEditMaster,
+  cancelEditMaster,
+  renameMasterItem,
+  deleteMasterItem,
+}) {
+  const [dragItem, setDragItem] = useState(null);
+
+  return (
+    <div className="max-h-[360px] space-y-1.5 overflow-y-auto pr-1">
+      {items.map((item, index) => {
+        const actualIndex = allItems.indexOf(item);
+        const isEditing = editingMaster?.type === type && editingMaster?.oldName === item;
+
+        return (
+          <div
+            key={item}
+            draggable={!isEditing}
+            onDragStart={() => setDragItem(item)}
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={() => {
+              if (!dragItem || dragItem === item) return;
+              reorderList(type, allItems.indexOf(dragItem), actualIndex);
+              setDragItem(null);
+            }}
+            onDragEnd={() => setDragItem(null)}
+            className={classNames(
+              "master-list-item flex cursor-grab items-center justify-between rounded-xl border bg-white px-2 py-1.5 text-xs shadow-sm transition active:cursor-grabbing",
+              dragItem === item ? "scale-[0.99] border-slate-400 opacity-60" : "border-slate-200 hover:bg-slate-50",
+              getItemClass ? getItemClass(item, index) : ""
+            )}
+            style={getItemStyle ? getItemStyle(item, index) : undefined}
+            title="Drag to reorder"
+          >
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <span className="master-list-index flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[10px] font-semibold text-slate-500">
+                {actualIndex + 1}
+              </span>
+
+              {isEditing ? (
+                <input
+                  value={editingMasterValue}
+                  onChange={(event) => setEditingMasterValue(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") renameMasterItem(type, item, editingMasterValue);
+                    if (event.key === "Escape") cancelEditMaster();
+                  }}
+                  className="h-7 min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-900"
+                  autoFocus
+                />
+              ) : (
+                <span className="master-list-name min-w-0 truncate font-medium">
+                  {renderItem ? renderItem(item, index) : item}
+                </span>
+              )}
+            </div>
+
+            <div className="flex shrink-0 items-center gap-1.5">
+              {renderRight ? renderRight(item, index) : null}
+
+              {isEditing ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => renameMasterItem(type, item, editingMasterValue)}
+                    className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-700 hover:bg-slate-50"
+                  >
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    onClick={cancelEditMaster}
+                    className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] text-slate-500 hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => startEditMaster(type, item)}
+                    className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] text-slate-500 hover:bg-slate-50"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => deleteMasterItem(type, item)}
+                    className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] text-red-500 hover:bg-red-50"
+                  >
+                    Delete
+                  </button>
+                  <span className="drag-label text-[10px] text-slate-400">drag</span>
+                </>
+              )}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
