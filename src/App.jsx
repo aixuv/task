@@ -1804,133 +1804,164 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
           className={classNames("min-w-0 flex-1", activeView === "Home" && homeMinimalMode ? "p-2" : "p-2 sm:p-3 lg:p-4")}
         >
           <div className={classNames("flex w-full flex-col lg:flex-row lg:items-center lg:justify-between", activeView === "Home" && homeMinimalMode ? "mb-1 gap-1" : "mb-2 gap-2")}>
-            <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0">
-                <h1 className={classNames("font-bold tracking-tight", activeView === "Home" && homeMinimalMode ? "text-lg" : "text-xl sm:text-2xl")}>{activeView}</h1>
-                {!(activeView === "Home" && homeMinimalMode) && <p className={classNames("hidden sm:block text-xs sm:text-sm", darkMode ? "text-slate-400" : "text-slate-500")}>
-  Capture notes, manage tasks, and track work from one place.</p>}
-              </div>
-              <div className="flex w-full items-center gap-2 overflow-x-auto pb-1 sm:ml-auto sm:w-auto sm:shrink-0 sm:justify-end sm:overflow-visible sm:pb-0">
-              <div className={classNames("flex shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-medium shadow-sm", darkMode ? "border-neutral-700 bg-neutral-900 text-neutral-300" : "border-slate-200 bg-white text-slate-600")}>
-                <span className="hidden whitespace-nowrap sm:inline">Workspace</span>
-                <select
-                  value={selectedWorkspaceId}
-                  onChange={(event) => {
-                    setSelectedWorkspaceId(event.target.value);
-                    setTaskPopupId(null);
-                  }}
-                  className={classNames("h-8 w-[170px] max-w-[45vw] rounded-xl border px-2 text-[11px] outline-none", darkMode ? "border-neutral-700 bg-neutral-950 text-neutral-100" : "border-slate-200 bg-white text-slate-700")}
-                  title="Select workspace"
-                >
-                  <option value="mine">My Workspace</option>
-                  {workspaceShares.map((share) => (
-                    <option key={share.owner_user_id} value={share.owner_user_id}>
-                      {share.ownerName || share.ownerEmail || "Shared Workspace"}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              {!isSharedWorkspace && (
-                <div className={classNames("hidden shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-medium shadow-sm xl:flex", darkMode ? "border-neutral-700 bg-neutral-900 text-neutral-300" : "border-slate-200 bg-white text-slate-600")}>
-                  <input
-                    type="email"
-                    value={shareEmail}
-                    onChange={(event) => setShareEmail(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") shareMyWorkspace();
-                    }}
-                    placeholder="Share email"
-                    className={classNames("h-6 w-36 rounded-md border px-2 text-[11px] outline-none", darkMode ? "border-neutral-700 bg-neutral-950 text-neutral-100" : "border-slate-200 bg-white text-slate-700")}
-                  />
-                  <button
-                    type="button"
-                    onClick={shareMyWorkspace}
-                    className="rounded-md bg-slate-900 px-2 py-1 text-[10px] font-semibold text-white hover:bg-slate-700"
-                    title="Share this workspace as view only"
-                  >
-                    Share
-                  </button>
-                </div>
-              )}
-              {isSharedWorkspace && (
-                <div className="hidden rounded-full bg-amber-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-700 ring-1 ring-amber-200 xl:block">
-                  View only
-                </div>
-              )}
-              {activeView === "Home" && (
-                <label className="flex shrink-0 items-center gap-2 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-600 shadow-sm">
-                  <span>{homeMinimalMode ? "Minimal" : "Full"}</span>
-                  <button
-                    type="button"
-                    onClick={() => setHomeMinimalMode(!homeMinimalMode)}
+            <div className="flex w-full min-w-0 flex-col gap-2">
+              {/* Row 1: Page Header | Workspace Dropdown */}
+              <div className="flex w-full min-w-0 items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <h1
                     className={classNames(
-                      "relative h-4 w-8 rounded-full transition",
-                      homeMinimalMode ? "bg-slate-900" : "bg-slate-200"
+                      "truncate font-bold tracking-tight",
+                      activeView === "Home" && homeMinimalMode ? "text-lg" : "text-xl sm:text-2xl"
                     )}
-                    title="Toggle minimal home view"
                   >
-                    <span
+                    {activeView}
+                  </h1>
+
+                  {!(activeView === "Home" && homeMinimalMode) && (
+                    <p
                       className={classNames(
-                        "absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition",
-                        homeMinimalMode ? "left-4" : "left-0.5"
+                        "hidden sm:block text-xs sm:text-sm",
+                        darkMode ? "text-slate-400" : "text-slate-500"
                       )}
-                    />
-                  </button>
-                </label>
-              )}
-              {["Kanban", "Table", "Calendar", "Gantt"].includes(activeView) && (
-                <label className={classNames("flex shrink-0 items-center gap-2 rounded-full border px-2.5 py-1 text-[11px] font-medium shadow-sm", darkMode ? "border-neutral-700 bg-neutral-900 text-neutral-300" : "border-slate-200 bg-white text-slate-600")}>
-                  <span>{hideDoneTasks ? "Done hidden" : "Done visible"}</span>
-                  <button
-                    type="button"
-                    onClick={() => setHideDoneTasks(!hideDoneTasks)}
-                    className={classNames(
-                      "relative h-4 w-8 rounded-full transition",
-                      hideDoneTasks ? "bg-slate-900" : "bg-slate-200"
-                    )}
-                    title="Hide or show Done tasks"
-                  >
-                    <span
-                      className={classNames(
-                        "absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition",
-                        hideDoneTasks ? "left-4" : "left-0.5"
-                      )}
-                    />
-                  </button>
-                </label>
-              )}
-              <label className={classNames("flex shrink-0 items-center gap-2 rounded-full border px-2.5 py-1 text-[11px] font-medium shadow-sm", darkMode ? "border-neutral-700 bg-neutral-900 text-neutral-300" : "border-slate-200 bg-white text-slate-600")}>
-                <span>{darkMode ? "Dark" : "Light"}</span>
-                <button
-                  type="button"
-                  onClick={() => setDarkMode(!darkMode)}
-                  className={classNames(
-                    "relative h-4 w-8 rounded-full transition",
-                    darkMode ? "bg-white/80" : "bg-slate-200"
+                    >
+                      Capture notes, manage tasks, and track work from one place.
+                    </p>
                   )}
-                  title="Toggle light/dark mode"
+                </div>
+
+                <div
+                  className={classNames(
+                    "flex shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-medium shadow-sm",
+                    darkMode
+                      ? "border-neutral-700 bg-neutral-900 text-neutral-300"
+                      : "border-slate-200 bg-white text-slate-600"
+                  )}
                 >
-                  <span
+                  <span className="hidden whitespace-nowrap sm:inline">Workspace</span>
+                  <select
+                    value={selectedWorkspaceId}
+                    onChange={(event) => {
+                      setSelectedWorkspaceId(event.target.value);
+                      setTaskPopupId(null);
+                    }}
                     className={classNames(
-                      "absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition",
-                      darkMode ? "left-4" : "left-0.5"
+                      "h-8 w-[170px] max-w-[45vw] rounded-xl border px-2 text-[11px] outline-none",
+                      darkMode
+                        ? "border-neutral-700 bg-neutral-950 text-neutral-100"
+                        : "border-slate-200 bg-white text-slate-700"
+                    )}
+                    title="Select workspace"
+                  >
+                    <option value="mine">My Workspace</option>
+                    {workspaceShares.map((share) => (
+                      <option key={share.owner_user_id} value={share.owner_user_id}>
+                        {share.ownerName || share.ownerEmail || "Shared Workspace"}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Row 2: Full / Done / Light / Size */}
+              <div className="flex w-full items-center gap-2 overflow-x-auto pb-1 sm:ml-auto sm:w-auto sm:shrink-0 sm:justify-end sm:overflow-visible sm:pb-0">
+                {activeView === "Home" && (
+                  <label className="flex shrink-0 items-center gap-2 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-600 shadow-sm">
+                    <span>{homeMinimalMode ? "Minimal" : "Full"}</span>
+                    <button
+                      type="button"
+                      onClick={() => setHomeMinimalMode(!homeMinimalMode)}
+                      className={classNames(
+                        "relative h-4 w-8 rounded-full transition",
+                        homeMinimalMode ? "bg-slate-900" : "bg-slate-200"
+                      )}
+                      title="Toggle minimal home view"
+                    >
+                      <span
+                        className={classNames(
+                          "absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition",
+                          homeMinimalMode ? "left-4" : "left-0.5"
+                        )}
+                      />
+                    </button>
+                  </label>
+                )}
+
+                {["Kanban", "Table", "Calendar", "Gantt"].includes(activeView) && (
+                  <label className="flex shrink-0 items-center gap-2 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-600 shadow-sm">
+                    <span>{hideDoneTasks ? "Done hidden" : "Done visible"}</span>
+                    <button
+                      type="button"
+                      onClick={() => setHideDoneTasks(!hideDoneTasks)}
+                      className={classNames(
+                        "relative h-4 w-8 rounded-full transition",
+                        hideDoneTasks ? "bg-slate-900" : "bg-slate-200"
+                      )}
+                      title="Hide or show Done tasks"
+                    >
+                      <span
+                        className={classNames(
+                          "absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition",
+                          hideDoneTasks ? "left-4" : "left-0.5"
+                        )}
+                      />
+                    </button>
+                  </label>
+                )}
+
+                <label
+                  className={classNames(
+                    "flex shrink-0 items-center gap-2 rounded-full border px-2.5 py-1 text-[11px] font-medium shadow-sm",
+                    darkMode
+                      ? "border-neutral-700 bg-neutral-900 text-neutral-300"
+                      : "border-slate-200 bg-white text-slate-600"
+                  )}
+                >
+                  <span>{darkMode ? "Dark" : "Light"}</span>
+                  <button
+                    type="button"
+                    onClick={() => setDarkMode(!darkMode)}
+                    className={classNames(
+                      "relative h-4 w-8 rounded-full transition",
+                      darkMode ? "bg-white/80" : "bg-slate-200"
+                    )}
+                    title="Toggle light/dark mode"
+                  >
+                    <span
+                      className={classNames(
+                        "absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition",
+                        darkMode ? "left-4" : "left-0.5"
+                      )}
+                    />
+                  </button>
+                </label>
+
+                <div
+                  className={classNames(
+                    "flex shrink-0 items-center gap-2 rounded-full border px-2 py-1 text-[11px] font-medium shadow-sm",
+                    darkMode
+                      ? "border-neutral-700 bg-neutral-900 text-neutral-300"
+                      : "border-slate-200 bg-white text-slate-600"
+                  )}
+                >
+                  <span className="whitespace-nowrap">Size</span>
+                  <input
+                    type="number"
+                    min="75"
+                    max="130"
+                    step="5"
+                    value={displayScale}
+                    onChange={(event) =>
+                      setDisplayScale(Math.max(75, Math.min(130, Number(event.target.value) || 100)))
+                    }
+                    className={classNames(
+                      "h-5 w-12 rounded-md border px-1 text-center text-[11px] outline-none",
+                      darkMode
+                        ? "border-neutral-700 bg-neutral-950 text-neutral-100"
+                        : "border-slate-200 bg-white text-slate-700"
                     )}
                   />
-                </button>
-              </label>
-              <div className={classNames("flex shrink-0 items-center gap-2 rounded-full border px-2 py-1 text-[11px] font-medium shadow-sm", darkMode ? "border-neutral-700 bg-neutral-900 text-neutral-300" : "border-slate-200 bg-white text-slate-600")}>
-                <span className="whitespace-nowrap">Size</span>
-                <input
-                  type="number"
-                  min="75"
-                  max="130"
-                  step="5"
-                  value={displayScale}
-                  onChange={(event) => setDisplayScale(Math.max(75, Math.min(130, Number(event.target.value) || 100)))}
-                  className={classNames("h-5 w-12 rounded-md border px-1 text-center text-[11px] outline-none", darkMode ? "border-neutral-700 bg-neutral-950 text-neutral-100" : "border-slate-200 bg-white text-slate-700")}
-                />
-                <span>%</span>
-              </div>
+                  <span>%</span>
+                </div>
               </div>
             </div>
             <div className="flex gap-2 overflow-x-auto pb-1 lg:hidden">
