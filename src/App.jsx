@@ -935,10 +935,109 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
   const [tagColors, setTagColors] = useState(defaultTagColors);
   const [cloudReady, setCloudReady] = useState(false);
   const [cloudStatus, setCloudStatus] = useState("Loading cloud data...");
+  const [workspaceShares, setWorkspaceShares] = useState([]);
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState("mine");
+  const [shareEmail, setShareEmail] = useState("");
+  const [shareMessage, setShareMessage] = useState("");
+
+  const currentUserId = session?.user?.id || "";
+  const selectedWorkspaceOwnerId = selectedWorkspaceId === "mine" ? currentUserId : selectedWorkspaceId;
+  const selectedWorkspaceShare = workspaceShares.find((share) => share.owner_user_id === selectedWorkspaceId);
+  const isSharedWorkspace = Boolean(selectedWorkspaceOwnerId && selectedWorkspaceOwnerId !== currentUserId);
+  const workspaceLabel = isSharedWorkspace
+    ? selectedWorkspaceShare?.ownerName || selectedWorkspaceShare?.ownerEmail || "Shared Workspace"
+    : "My Workspace";
+
+  function ensureEditableWorkspace() {
+    if (!isSharedWorkspace) return true;
+    setCloudStatus("View only shared workspace");
+    return false;
+  }
+
+  function applyWorkspaceState(state) {
+    if (!state) {
+      setTasks([]);
+      setStatuses(initialStatuses);
+      setGroups(initialGroups);
+      setTags(initialTags);
+      setPriorities(["High", "Medium", "Low"]);
+      setStatusColors(defaultStatusColors);
+      setPriorityColors(defaultPriorityColors);
+      setTagColors(defaultTagColors);
+      return;
+    }
+
+    setTasks(Array.isArray(state.tasks) ? state.tasks : []);
+    setStatuses(Array.isArray(state.statuses) ? state.statuses : initialStatuses);
+    setGroups(Array.isArray(state.groups) ? state.groups : initialGroups);
+    setTags(Array.isArray(state.tags) ? state.tags : initialTags);
+    setPriorities(Array.isArray(state.priorities) && state.priorities.length ? state.priorities : ["High", "Medium", "Low"]);
+    if (state.defaultGroupMode) setDefaultGroupMode(state.defaultGroupMode);
+    if (state.homeGroupBy) setHomeGroupBy(state.homeGroupBy);
+    if (state.tableGroupBy) setTableGroupBy(state.tableGroupBy);
+    if (state.ganttGroupBy) setGanttGroupBy(state.ganttGroupBy);
+    if (state.calendarGroupBy) setCalendarGroupBy(state.calendarGroupBy);
+    if (state.ganttColumns) setGanttColumns(state.ganttColumns);
+    if (state.kanbanBy) setKanbanBy(state.kanbanBy);
+    if (state.tableColumns) setTableColumns(state.tableColumns);
+    if (typeof state.homeMinimalMode === "boolean") setHomeMinimalMode(state.homeMinimalMode);
+    if (typeof state.hideDoneTasks === "boolean") setHideDoneTasks(state.hideDoneTasks);
+    if (typeof state.sidebarCollapsed === "boolean") setSidebarCollapsed(state.sidebarCollapsed);
+    if (state.displayScale) setDisplayScale(state.displayScale);
+    if (typeof state.darkMode === "boolean") setDarkMode(state.darkMode);
+    setStatusColors({ ...defaultStatusColors, ...(state.statusColors || {}) });
+    setPriorityColors({ ...defaultPriorityColors, ...(state.priorityColors || {}) });
+    setTagColors({ ...defaultTagColors, ...(state.tagColors || {}) });
+  }
 
   useEffect(() => {
-  localStorage.setItem("noteflow_active_view", activeView);
-  }, [activeView]);
+    let ignore = false;
+
+    async function loadWorkspaceShares() {
+      if (!currentUserId) return;
+
+      const { data: shares, error } = await supabase
+        .from("task_workspace_shares")
+        .select("owner_user_id, shared_with_email, permission, created_at")
+        .eq("shared_with_user_id", currentUserId)
+        .order("created_at", { ascending: false });
+
+      if (ignore) return;
+
+      if (error) {
+        setShareMessage(`Share list failed: ${error.message}`);
+        setWorkspaceShares([]);
+        return;
+      }
+
+      const ownerIds = [...new Set((shares || []).map((share) => share.owner_user_id).filter(Boolean))];
+      let profiles = [];
+
+      if (ownerIds.length) {
+        const { data: profileRows } = await supabase
+          .from("user_profiles")
+          .select("id,email,full_name")
+          .in("id", ownerIds);
+        profiles = profileRows || [];
+      }
+
+      const profileById = Object.fromEntries(profiles.map((item) => [item.id, item]));
+      const mergedShares = (shares || []).map((share) => ({
+        ...share,
+        ownerEmail: profileById[share.owner_user_id]?.email || "",
+        ownerName: profileById[share.owner_user_id]?.full_name || profileById[share.owner_user_id]?.email || "Shared Workspace",
+      }));
+
+      setWorkspaceShares(mergedShares);
+
+      if (selectedWorkspaceId !== "mine" && !mergedShares.some((share) => share.owner_user_id === selectedWorkspaceId)) {
+        setSelectedWorkspaceId("mine");
+      }
+    }
+
+    loadWorkspaceShares();
+    return () => { ignore = true; };
+  }, [currentUserId, selectedWorkspaceId]);
 
   const filteredTasks = useMemo(() => {
     return tasks.filter((task) => {
@@ -964,55 +1063,42 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
 
   useEffect(() => {
     let ignore = false;
+
     async function loadCloudState() {
-      if (!session?.user?.id) return;
+      if (!selectedWorkspaceOwnerId) return;
       setCloudReady(false);
-      setCloudStatus("Loading cloud data...");
+      setCloudStatus(isSharedWorkspace ? `Loading ${workspaceLabel}...` : "Loading cloud data...");
+
       const { data, error } = await supabase
         .from("user_app_state")
         .select("state")
-        .eq("user_id", session.user.id)
+        .eq("user_id", selectedWorkspaceOwnerId)
         .eq("app_key", "note_task_v1")
         .maybeSingle();
+
       if (ignore) return;
+
       if (error) {
         setCloudStatus(`Cloud load failed: ${error.message}`);
         setCloudReady(true);
         return;
       }
-      const state = data?.state;
-      if (state) {
-        if (Array.isArray(state.tasks)) setTasks(state.tasks);
-        if (Array.isArray(state.statuses)) setStatuses(state.statuses);
-        if (Array.isArray(state.groups)) setGroups(state.groups);
-        if (Array.isArray(state.tags)) setTags(state.tags);
-        if (Array.isArray(state.priorities) && state.priorities.length) setPriorities(state.priorities);
-        if (state.defaultGroupMode) setDefaultGroupMode(state.defaultGroupMode);
-        if (state.homeGroupBy) setHomeGroupBy(state.homeGroupBy);
-        if (state.tableGroupBy) setTableGroupBy(state.tableGroupBy);
-        if (state.ganttGroupBy) setGanttGroupBy(state.ganttGroupBy);
-        if (state.calendarGroupBy) setCalendarGroupBy(state.calendarGroupBy);
-        if (state.ganttColumns) setGanttColumns(state.ganttColumns);
-        if (state.kanbanBy) setKanbanBy(state.kanbanBy);
-        if (state.tableColumns) setTableColumns(state.tableColumns);
-        if (typeof state.homeMinimalMode === "boolean") setHomeMinimalMode(state.homeMinimalMode);
-        if (typeof state.hideDoneTasks === "boolean") setHideDoneTasks(state.hideDoneTasks);
-        if (typeof state.sidebarCollapsed === "boolean") setSidebarCollapsed(state.sidebarCollapsed);
-        if (state.displayScale) setDisplayScale(state.displayScale);
-        if (typeof state.darkMode === "boolean") setDarkMode(state.darkMode);
-        if (state.statusColors) setStatusColors({ ...defaultStatusColors, ...state.statusColors });
-        if (state.priorityColors) setPriorityColors({ ...defaultPriorityColors, ...state.priorityColors });
-        if (state.tagColors) setTagColors({ ...defaultTagColors, ...state.tagColors });
-      }
-      setCloudStatus(data?.state ? "Cloud data loaded" : "Using default sample data");
+
+      applyWorkspaceState(data?.state);
+      setCloudStatus(
+        data?.state
+          ? (isSharedWorkspace ? `Viewing ${workspaceLabel}` : "Cloud data loaded")
+          : (isSharedWorkspace ? `No tasks shared by ${workspaceLabel}` : "Cloud data loaded")
+      );
       setCloudReady(true);
     }
+
     loadCloudState();
     return () => { ignore = true; };
-  }, [session?.user?.id]);
+  }, [selectedWorkspaceOwnerId, isSharedWorkspace, workspaceLabel]);
 
   useEffect(() => {
-    if (!cloudReady || !session?.user?.id) return;
+    if (!cloudReady || !session?.user?.id || isSharedWorkspace) return;
     const handle = window.setTimeout(async () => {
       const state = {
         tasks,
@@ -1044,7 +1130,7 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
       setCloudStatus(error ? `Cloud save failed: ${error.message}` : "Saved to cloud");
     }, 600);
     return () => window.clearTimeout(handle);
-  }, [cloudReady, session?.user?.id, tasks, statuses, groups, tags, priorities, defaultGroupMode, homeGroupBy, tableGroupBy, ganttGroupBy, calendarGroupBy, ganttColumns, kanbanBy, tableColumns, homeMinimalMode, hideDoneTasks, sidebarCollapsed, displayScale, darkMode, statusColors, priorityColors, tagColors]);
+  }, [cloudReady, session?.user?.id, isSharedWorkspace, tasks, statuses, groups, tags, priorities, defaultGroupMode, homeGroupBy, tableGroupBy, ganttGroupBy, calendarGroupBy, ganttColumns, kanbanBy, tableColumns, homeMinimalMode, hideDoneTasks, sidebarCollapsed, displayScale, darkMode, statusColors, priorityColors, tagColors]);
 
 
   const canManageUsers = ["admin", "director"].includes(profile?.role);
@@ -1058,6 +1144,53 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
     ...(canManageUsers ? [{ name: "User Management", icon: Users }] : []),
   ];
 
+  async function shareMyWorkspace() {
+    const normalizedEmail = shareEmail.trim().toLowerCase();
+    if (!normalizedEmail) return;
+    if (normalizedEmail === (session?.user?.email || "").toLowerCase()) {
+      setShareMessage("You cannot share with yourself.");
+      return;
+    }
+
+    setShareMessage("Finding user...");
+
+    const { data: targetProfile, error: targetError } = await supabase
+      .from("user_profiles")
+      .select("id,email,full_name")
+      .ilike("email", normalizedEmail)
+      .maybeSingle();
+
+    if (targetError) {
+      setShareMessage(`User lookup failed: ${targetError.message}`);
+      return;
+    }
+
+    if (!targetProfile?.id) {
+      setShareMessage("No registered user found with this email.");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("task_workspace_shares")
+      .upsert(
+        {
+          owner_user_id: session.user.id,
+          shared_with_user_id: targetProfile.id,
+          shared_with_email: normalizedEmail,
+          permission: "view",
+        },
+        { onConflict: "owner_user_id,shared_with_user_id" }
+      );
+
+    if (error) {
+      setShareMessage(`Share failed: ${error.message}`);
+      return;
+    }
+
+    setShareEmail("");
+    setShareMessage(`Workspace shared with ${targetProfile.full_name || targetProfile.email || normalizedEmail}.`);
+  }
+
   function applyDefaultGroupMode(nextMode) {
     setDefaultGroupMode(nextMode);
     setHomeGroupBy(nextMode);
@@ -1067,6 +1200,7 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
   }
 
   function addQuickTask() {
+    if (!ensureEditableWorkspace()) return;
     if (!quickTitle.trim()) return;
     const task = {
       id: Date.now(),
@@ -1088,6 +1222,7 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
   }
 
   function addFloatingTask() {
+    if (!ensureEditableWorkspace()) return;
     const title = window.prompt("Task name");
     if (!title?.trim()) return;
     const remark = window.prompt("Remark") || "";
@@ -1117,6 +1252,7 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
   }
 
   function updateTask(id, patch) {
+    if (!ensureEditableWorkspace()) return;
     setTasks((current) =>
       current.map((task) => {
         if (task.id !== id) return task;
@@ -1129,6 +1265,7 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
   }
 
   function toggleSubtask(taskId, subtaskId) {
+    if (!ensureEditableWorkspace()) return;
     setTasks((current) =>
       current.map((task) => {
         if (task.id !== taskId) return task;
@@ -1143,6 +1280,7 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
   }
 
   function addSubtask(taskId) {
+    if (!ensureEditableWorkspace()) return;
     setTasks((current) =>
       current.map((task) =>
         task.id === taskId
@@ -1163,6 +1301,7 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
   }
 
   function updateSubtask(taskId, subtaskId, patch) {
+    if (!ensureEditableWorkspace()) return;
     setTasks((current) =>
       current.map((task) => {
         if (task.id !== taskId) return task;
@@ -1177,6 +1316,7 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
   }
 
   function removeSubtask(taskId, subtaskId) {
+    if (!ensureEditableWorkspace()) return;
     const ok = window.confirm("Delete this subtask?");
     if (!ok) return;
     setTasks((current) =>
@@ -1191,16 +1331,19 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
   }
 
   function removeTask(taskId) {
+    if (!ensureEditableWorkspace()) return;
     setTasks((current) => current.filter((task) => task.id !== taskId));
   }
 
   function addGroup() {
+    if (!ensureEditableWorkspace()) return;
     if (!newGroup.trim() || groups.includes(newGroup.trim())) return;
     setGroups((current) => [...current, newGroup.trim()]);
     setNewGroup("");
   }
 
   function addTag() {
+    if (!ensureEditableWorkspace()) return;
     const tagName = newTag.trim();
     if (!tagName || tags.includes(tagName)) return;
     setTags((current) => [...current, tagName]);
@@ -1209,6 +1352,7 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
   }
 
   function addStatus() {
+    if (!ensureEditableWorkspace()) return;
     const name = newStatus.trim();
     if (!name || statuses.includes(name)) return;
     setStatuses((current) => [...current, name]);
@@ -1217,6 +1361,7 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
   }
 
   function addPriority() {
+    if (!ensureEditableWorkspace()) return;
     const name = newPriority.trim();
     if (!name || priorities.includes(name)) return;
     setPriorities((current) => [...current, name]);
@@ -1243,6 +1388,7 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
   }
 
   function renameMasterItem(type, oldName, newName) {
+    if (!ensureEditableWorkspace()) return;
     const cleanName = newName.trim();
 
     if (!cleanName || cleanName === oldName) {
@@ -1293,6 +1439,7 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
   }
 
   function deleteMasterItem(type, name) {
+    if (!ensureEditableWorkspace()) return;
     const ok = window.confirm(`Delete "${name}"? Existing tasks will be moved to a safe default.`);
     if (!ok) return;
 
@@ -1339,18 +1486,22 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
   }
 
   function updateStatusColor(status, color) {
+    if (!ensureEditableWorkspace()) return;
     setStatusColors((current) => ({ ...current, [status]: color }));
   }
 
   function updatePriorityColor(priority, color) {
+    if (!ensureEditableWorkspace()) return;
     setPriorityColors((current) => ({ ...current, [priority]: color }));
   }
 
   function updateTagColor(tag, color) {
+    if (!ensureEditableWorkspace()) return;
     setTagColors((current) => ({ ...current, [tag]: color }));
   }
 
   function reorderList(type, fromIndex, toIndex) {
+    if (!ensureEditableWorkspace()) return;
     if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) return;
     const reorder = (list) => {
       const next = [...list];
@@ -1366,14 +1517,17 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
   }
 
   function toggleTableColumn(columnKey) {
+    if (!ensureEditableWorkspace()) return;
     setTableColumns((current) => ({ ...current, [columnKey]: !current[columnKey] }));
   }
 
   function toggleGanttColumn(columnKey) {
+    if (!ensureEditableWorkspace()) return;
     setGanttColumns((current) => ({ ...current, [columnKey]: !current[columnKey] }));
   }
 
   function toggleTaskTag(taskId, tag) {
+    if (!ensureEditableWorkspace()) return;
     setTasks((current) =>
       current.map((task) => {
         if (task.id !== taskId) return task;
@@ -1388,6 +1542,7 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
 
 
   async function handleTaskCsvUpload(file) {
+    if (!ensureEditableWorkspace()) return;
     if (!file) return;
 
     try {
@@ -1542,7 +1697,10 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
           {!sidebarCollapsed && (
             <div className="absolute bottom-3 left-2.5 right-2.5 rounded-xl border border-slate-200 bg-white/70 p-2 text-xs dark:border-neutral-800 dark:bg-neutral-900/70">
               <div className="truncate font-semibold">{profile?.full_name || profile?.email || session?.user?.email}</div>
-              <div className="mb-2 truncate text-[10px] uppercase tracking-wide text-slate-500">{profile?.role || "member"} · {cloudStatus}</div>
+              <div className="mb-1 truncate text-[10px] uppercase tracking-wide text-slate-500">{profile?.role || "member"} · {cloudStatus}</div>
+              <div className="mb-2 truncate text-[10px] text-slate-500" title={shareMessage || workspaceLabel}>
+                {isSharedWorkspace ? `Viewing: ${workspaceLabel}` : (shareMessage || workspaceLabel)}
+              </div>
               <Button variant="outline" onClick={onSignOut} className="h-7 w-full rounded-lg px-2 text-[10px]">
                 <LogOut size={12} className="mr-1" /> Sign out
               </Button>
@@ -1560,6 +1718,52 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
                 {!(activeView === "Home" && homeMinimalMode) && <p className={classNames("text-xs sm:text-sm", darkMode ? "text-slate-400" : "text-slate-500")}>Capture notes, manage tasks, and track work from one place.</p>}
               </div>
               <div className="ml-auto flex shrink-0 items-center gap-2">
+              <div className={classNames("flex shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-medium shadow-sm", darkMode ? "border-neutral-700 bg-neutral-900 text-neutral-300" : "border-slate-200 bg-white text-slate-600")}>
+                <span className="hidden whitespace-nowrap sm:inline">Workspace</span>
+                <select
+                  value={selectedWorkspaceId}
+                  onChange={(event) => {
+                    setSelectedWorkspaceId(event.target.value);
+                    setTaskPopupId(null);
+                  }}
+                  className={classNames("h-6 max-w-[180px] rounded-md border px-1.5 text-[11px] outline-none", darkMode ? "border-neutral-700 bg-neutral-950 text-neutral-100" : "border-slate-200 bg-white text-slate-700")}
+                  title="Select workspace"
+                >
+                  <option value="mine">My Workspace</option>
+                  {workspaceShares.map((share) => (
+                    <option key={share.owner_user_id} value={share.owner_user_id}>
+                      {share.ownerName || share.ownerEmail || "Shared Workspace"}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {!isSharedWorkspace && (
+                <div className={classNames("hidden shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-medium shadow-sm xl:flex", darkMode ? "border-neutral-700 bg-neutral-900 text-neutral-300" : "border-slate-200 bg-white text-slate-600")}>
+                  <input
+                    type="email"
+                    value={shareEmail}
+                    onChange={(event) => setShareEmail(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") shareMyWorkspace();
+                    }}
+                    placeholder="Share email"
+                    className={classNames("h-6 w-36 rounded-md border px-2 text-[11px] outline-none", darkMode ? "border-neutral-700 bg-neutral-950 text-neutral-100" : "border-slate-200 bg-white text-slate-700")}
+                  />
+                  <button
+                    type="button"
+                    onClick={shareMyWorkspace}
+                    className="rounded-md bg-slate-900 px-2 py-1 text-[10px] font-semibold text-white hover:bg-slate-700"
+                    title="Share this workspace as view only"
+                  >
+                    Share
+                  </button>
+                </div>
+              )}
+              {isSharedWorkspace && (
+                <div className="hidden rounded-full bg-amber-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-700 ring-1 ring-amber-200 xl:block">
+                  View only
+                </div>
+              )}
               {activeView === "Home" && (
                 <label className="flex shrink-0 items-center gap-2 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-600 shadow-sm">
                   <span>{homeMinimalMode ? "Minimal" : "Full"}</span>
@@ -1657,6 +1861,11 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
             <StatCard icon={Flag} label="Overdue" value={overdueTasks.length} />
             <StatCard icon={Tag} label="Tags" value={tags.length} />
           </div>
+          {(isSharedWorkspace || shareMessage) && !(activeView === "Home" && homeMinimalMode) && (
+            <div className={classNames("mb-2 rounded-xl border px-3 py-2 text-xs", isSharedWorkspace ? "border-amber-200 bg-amber-50 text-amber-700" : "border-slate-200 bg-white text-slate-600")}>
+              {isSharedWorkspace ? `Viewing ${workspaceLabel} in read-only mode. Your own workspace is not changed.` : shareMessage}
+            </div>
+          )}
           {activeView === "Home" && (
             <HomeView
               groups={groups}
@@ -2964,12 +3173,11 @@ function KanbanView({ statusColors, priorityColors, tagColors, openTaskPopup, ka
       <div className="flex max-h-[calc(100vh-145px)] gap-2 overflow-x-auto overflow-y-hidden pb-1">
         {columns.map((column, index) => {
           const columnTasks = getColumnTasks(column);
-          if (columnTasks.length === 0) return null;
           return (
             <div
               key={column}
               className={classNames(
-                "kanban-group-card flex h-[calc(100vh-210px)] min-h-[560px] w-[260px] shrink-0 flex-col rounded-xl border p-1.5 shadow-sm sm:w-[280px]",
+                "kanban-group-card flex min-h-[500px] w-[260px] shrink-0 flex-col rounded-xl border p-1.5 shadow-sm sm:w-[280px]",
                 groupSectionClass(index),
                 `kanban-group-color-${index % 6}`
               )}
