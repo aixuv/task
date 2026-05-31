@@ -3068,7 +3068,7 @@ function TableView({ statusColors, priorityColors, tagColors, tasks, statuses, g
                               type="button"
                               onClick={() => openTaskPopup(task.id)}
                               className="text-left text-sm leading-snug text-slate-950 hover:underline"
-                              style={{ fontWeight: 800 }}
+                              style={{ fontWeight: 600 }}
                             >
                               {task.title}
                             </button>
