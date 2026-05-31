@@ -1216,19 +1216,19 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
 
     setShareMessage("Finding user...");
 
-    const { data: targetProfile, error: targetError } = await supabase
-      .from("user_profiles")
-      .select("id,email,full_name")
-      .ilike("email", normalizedEmail)
-      .maybeSingle();
+    const { data: targetRows, error: targetError } = await supabase.rpc("find_share_user_by_email", {
+      target_email: normalizedEmail,
+    });
 
     if (targetError) {
       setShareMessage(`User lookup failed: ${targetError.message}`);
       return;
     }
 
+    const targetProfile = Array.isArray(targetRows) ? targetRows[0] : null;
+
     if (!targetProfile?.id) {
-      setShareMessage("No registered user found with this email.");
+      setShareMessage("No registered active user found with this email.");
       return;
     }
 
@@ -1238,7 +1238,7 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
         {
           owner_user_id: session.user.id,
           shared_with_user_id: targetProfile.id,
-          shared_with_email: normalizedEmail,
+          shared_with_email: targetProfile.email || normalizedEmail,
           permission: "view",
         },
         { onConflict: "owner_user_id,shared_with_user_id" }
