@@ -425,98 +425,6 @@ function formatDate(dateString) {
   return `${day}-${month}-${year}`;
 }
 
-
-function splitCsvLine(line) {
-  const values = [];
-  let current = "";
-  let insideQuotes = false;
-
-  for (let index = 0; index < line.length; index += 1) {
-    const char = line[index];
-    const nextChar = line[index + 1];
-
-    if (char === '"' && insideQuotes && nextChar === '"') {
-      current += '"';
-      index += 1;
-      continue;
-    }
-
-    if (char === '"') {
-      insideQuotes = !insideQuotes;
-      continue;
-    }
-
-    if (char === "," && !insideQuotes) {
-      values.push(current.trim());
-      current = "";
-      continue;
-    }
-
-    current += char;
-  }
-
-  values.push(current.trim());
-  return values;
-}
-
-function normalizeCsvHeader(header) {
-  return String(header || "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, "")
-    .replace(/_/g, "");
-}
-
-function parseTaskCsv(text) {
-  const lines = String(text || "")
-    .replace(/^\uFEFF/, "")
-    .split(/\r?\n/)
-    .filter((line) => line.trim());
-
-  if (lines.length < 2) return [];
-
-  const headers = splitCsvLine(lines[0]).map(normalizeCsvHeader);
-
-  return lines.slice(1).map((line) => {
-    const values = splitCsvLine(line);
-    return headers.reduce((row, header, index) => {
-      row[header] = values[index] || "";
-      return row;
-    }, {});
-  });
-}
-
-function splitCsvList(value) {
-  return String(value || "")
-    .split(/[|;]/)
-    .map((item) => item.trim().replace(/^#/, ""))
-    .filter(Boolean);
-}
-
-function normalizeCsvDate(value, fallback = "") {
-  const text = String(value || "").trim();
-  if (!text) return fallback;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
-
-  const slashMatch = text.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
-  if (slashMatch) {
-    const [, day, month, year] = slashMatch;
-    return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-  }
-
-  const parsed = new Date(text);
-  if (!Number.isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
-  return fallback;
-}
-
-function getCsvValue(row, ...keys) {
-  for (const key of keys) {
-    const normalized = normalizeCsvHeader(key);
-    if (row[normalized]) return row[normalized];
-  }
-  return "";
-}
-
 function addDays(dateString, days) {
   const date = new Date(`${dateString}T00:00:00`);
   if (Number.isNaN(date.getTime())) return dateString;
@@ -880,8 +788,12 @@ function App() {
 export default App;
 
 function NoteTaskAppV1({ session, profile, onSignOut }) {
+  const activeViewStorageKey = session?.user?.id
+    ? `noteflow_active_view_${session.user.id}`
+    : "noteflow_active_view_guest";
+
   const [activeView, setActiveView] = useState(() => {
-  return localStorage.getItem("noteflow_active_view") || "Home";
+    return localStorage.getItem(activeViewStorageKey) || "Home";
   });
   const [tasks, setTasks] = useState([]);
   const [statuses, setStatuses] = useState(initialStatuses);
@@ -921,7 +833,6 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
   const [newGroup, setNewGroup] = useState("");
   const [newTag, setNewTag] = useState("");
   const [homeMinimalMode, setHomeMinimalMode] = useState(false);
-  const [hideDoneTasks, setHideDoneTasks] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [homeFiltersOpen, setHomeFiltersOpen] = useState(false);
   const [tableColumns, setTableColumns] = useState(() =>
@@ -935,171 +846,11 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
   const [tagColors, setTagColors] = useState(defaultTagColors);
   const [cloudReady, setCloudReady] = useState(false);
   const [cloudStatus, setCloudStatus] = useState("Loading cloud data...");
-  const [workspaceShares, setWorkspaceShares] = useState([]);
-  const [sharedUsers, setSharedUsers] = useState([]);
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState("mine");
-  const [shareEmail, setShareEmail] = useState("");
-  const [shareMessage, setShareMessage] = useState("");
-
-  const currentUserId = session?.user?.id || "";
-  const selectedWorkspaceOwnerId = selectedWorkspaceId === "mine" ? currentUserId : selectedWorkspaceId;
-  const selectedWorkspaceShare = workspaceShares.find((share) => share.owner_user_id === selectedWorkspaceId);
-  const isSharedWorkspace = Boolean(selectedWorkspaceOwnerId && selectedWorkspaceOwnerId !== currentUserId);
-  const workspaceLabel = isSharedWorkspace
-    ? selectedWorkspaceShare?.ownerName || selectedWorkspaceShare?.ownerEmail || "Shared Workspace"
-    : "My Workspace";
-
-  function ensureEditableWorkspace() {
-    if (!isSharedWorkspace) return true;
-    setCloudStatus("View only shared workspace");
-    return false;
-  }
-
-  function applyWorkspaceState(state) {
-    if (!state) {
-      setTasks([]);
-      setStatuses(initialStatuses);
-      setGroups(initialGroups);
-      setTags(initialTags);
-      setPriorities(["High", "Medium", "Low"]);
-      setStatusColors(defaultStatusColors);
-      setPriorityColors(defaultPriorityColors);
-      setTagColors(defaultTagColors);
-      return;
-    }
-
-    setTasks(Array.isArray(state.tasks) ? state.tasks : []);
-    setStatuses(Array.isArray(state.statuses) ? state.statuses : initialStatuses);
-    setGroups(Array.isArray(state.groups) ? state.groups : initialGroups);
-    setTags(Array.isArray(state.tags) ? state.tags : initialTags);
-    setPriorities(Array.isArray(state.priorities) && state.priorities.length ? state.priorities : ["High", "Medium", "Low"]);
-    if (state.defaultGroupMode) setDefaultGroupMode(state.defaultGroupMode);
-    if (state.homeGroupBy) setHomeGroupBy(state.homeGroupBy);
-    if (state.tableGroupBy) setTableGroupBy(state.tableGroupBy);
-    if (state.ganttGroupBy) setGanttGroupBy(state.ganttGroupBy);
-    if (state.calendarGroupBy) setCalendarGroupBy(state.calendarGroupBy);
-    if (state.ganttColumns) setGanttColumns(state.ganttColumns);
-    if (state.kanbanBy) setKanbanBy(state.kanbanBy);
-    if (state.tableColumns) setTableColumns(state.tableColumns);
-    if (typeof state.homeMinimalMode === "boolean") setHomeMinimalMode(state.homeMinimalMode);
-    if (typeof state.hideDoneTasks === "boolean") setHideDoneTasks(state.hideDoneTasks);
-    if (typeof state.sidebarCollapsed === "boolean") setSidebarCollapsed(state.sidebarCollapsed);
-    if (state.displayScale) setDisplayScale(state.displayScale);
-    if (typeof state.darkMode === "boolean") setDarkMode(state.darkMode);
-    setStatusColors({ ...defaultStatusColors, ...(state.statusColors || {}) });
-    setPriorityColors({ ...defaultPriorityColors, ...(state.priorityColors || {}) });
-    setTagColors({ ...defaultTagColors, ...(state.tagColors || {}) });
-  }
-
-  async function loadSharedUsersList() {
-    if (!currentUserId) {
-      setSharedUsers([]);
-      return;
-    }
-
-    const { data: shares, error } = await supabase
-      .from("task_workspace_shares")
-      .select("id, shared_with_user_id, shared_with_email, permission, created_at")
-      .eq("owner_user_id", currentUserId)
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      setShareMessage(`Shared users load failed: ${error.message}`);
-      setSharedUsers([]);
-      return;
-    }
-
-    const sharedUserIds = [...new Set((shares || []).map((share) => share.shared_with_user_id).filter(Boolean))];
-    let profiles = [];
-
-    if (sharedUserIds.length) {
-      const { data: profileRows } = await supabase
-        .from("user_profiles")
-        .select("id,email,full_name")
-        .in("id", sharedUserIds);
-      profiles = profileRows || [];
-    }
-
-    const profileById = Object.fromEntries(profiles.map((item) => [item.id, item]));
-    setSharedUsers((shares || []).map((share) => ({
-      ...share,
-      userEmail: profileById[share.shared_with_user_id]?.email || share.shared_with_email || "",
-      userName: profileById[share.shared_with_user_id]?.full_name || profileById[share.shared_with_user_id]?.email || share.shared_with_email || "Shared user",
-    })));
-  }
-
-  async function removeSharedUser(share) {
-    if (!share?.id) return;
-    const ok = window.confirm(`Remove sharing access for ${share.userName || share.shared_with_email || "this user"}?`);
-    if (!ok) return;
-
-    const { error } = await supabase
-      .from("task_workspace_shares")
-      .delete()
-      .eq("id", share.id)
-      .eq("owner_user_id", currentUserId);
-
-    if (error) {
-      setShareMessage(`Remove share failed: ${error.message}`);
-      return;
-    }
-
-    setShareMessage(`Removed sharing access for ${share.userName || share.shared_with_email || "user"}.`);
-    await loadSharedUsersList();
-  }
 
   useEffect(() => {
-    let ignore = false;
-
-    async function loadWorkspaceShares() {
-      if (!currentUserId) return;
-
-      const { data: shares, error } = await supabase
-        .from("task_workspace_shares")
-        .select("owner_user_id, shared_with_email, permission, created_at")
-        .eq("shared_with_user_id", currentUserId)
-        .order("created_at", { ascending: false });
-
-      if (ignore) return;
-
-      if (error) {
-        setShareMessage(`Share list failed: ${error.message}`);
-        setWorkspaceShares([]);
-        return;
-      }
-
-      const ownerIds = [...new Set((shares || []).map((share) => share.owner_user_id).filter(Boolean))];
-      let profiles = [];
-
-      if (ownerIds.length) {
-        const { data: profileRows } = await supabase
-          .from("user_profiles")
-          .select("id,email,full_name")
-          .in("id", ownerIds);
-        profiles = profileRows || [];
-      }
-
-      const profileById = Object.fromEntries(profiles.map((item) => [item.id, item]));
-      const mergedShares = (shares || []).map((share) => ({
-        ...share,
-        ownerEmail: profileById[share.owner_user_id]?.email || "",
-        ownerName: profileById[share.owner_user_id]?.full_name || profileById[share.owner_user_id]?.email || "Shared Workspace",
-      }));
-
-      setWorkspaceShares(mergedShares);
-
-      if (selectedWorkspaceId !== "mine" && !mergedShares.some((share) => share.owner_user_id === selectedWorkspaceId)) {
-        setSelectedWorkspaceId("mine");
-      }
-    }
-
-    loadWorkspaceShares();
-    return () => { ignore = true; };
-  }, [currentUserId, selectedWorkspaceId]);
-
-  useEffect(() => {
-    loadSharedUsersList();
-  }, [currentUserId]);
+    if (!session?.user?.id || !activeView) return;
+    localStorage.setItem(activeViewStorageKey, activeView);
+  }, [activeView, activeViewStorageKey, session?.user?.id]);
 
   const filteredTasks = useMemo(() => {
     return tasks.filter((task) => {
@@ -1119,48 +870,57 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
   const openTasks = filteredTasks.filter((task) => task.status !== "Done");
   const doneTasks = tasks.filter((task) => task.status === "Done");
   const overdueTasks = tasks.filter((task) => task.status !== "Done" && task.deadline < todayIso());
-  const visibleFilteredTasks = hideDoneTasks
-    ? filteredTasks.filter((task) => task.status !== "Done")
-    : filteredTasks;
 
   useEffect(() => {
     let ignore = false;
-
     async function loadCloudState() {
-      if (!selectedWorkspaceOwnerId) return;
+      if (!session?.user?.id) return;
       setCloudReady(false);
-      setCloudStatus(isSharedWorkspace ? `Loading ${workspaceLabel}...` : "Loading cloud data...");
-
+      setCloudStatus("Loading cloud data...");
       const { data, error } = await supabase
         .from("user_app_state")
         .select("state")
-        .eq("user_id", selectedWorkspaceOwnerId)
+        .eq("user_id", session.user.id)
         .eq("app_key", "note_task_v1")
         .maybeSingle();
-
       if (ignore) return;
-
       if (error) {
         setCloudStatus(`Cloud load failed: ${error.message}`);
         setCloudReady(true);
         return;
       }
-
-      applyWorkspaceState(data?.state);
-      setCloudStatus(
-        data?.state
-          ? (isSharedWorkspace ? `Viewing ${workspaceLabel}` : "Cloud data loaded")
-          : (isSharedWorkspace ? `No tasks shared by ${workspaceLabel}` : "Cloud data loaded")
-      );
+      const state = data?.state;
+      if (state) {
+        if (Array.isArray(state.tasks)) setTasks(state.tasks);
+        if (Array.isArray(state.statuses)) setStatuses(state.statuses);
+        if (Array.isArray(state.groups)) setGroups(state.groups);
+        if (Array.isArray(state.tags)) setTags(state.tags);
+        if (Array.isArray(state.priorities) && state.priorities.length) setPriorities(state.priorities);
+        if (state.defaultGroupMode) setDefaultGroupMode(state.defaultGroupMode);
+        if (state.homeGroupBy) setHomeGroupBy(state.homeGroupBy);
+        if (state.tableGroupBy) setTableGroupBy(state.tableGroupBy);
+        if (state.ganttGroupBy) setGanttGroupBy(state.ganttGroupBy);
+        if (state.calendarGroupBy) setCalendarGroupBy(state.calendarGroupBy);
+        if (state.ganttColumns) setGanttColumns(state.ganttColumns);
+        if (state.kanbanBy) setKanbanBy(state.kanbanBy);
+        if (state.tableColumns) setTableColumns(state.tableColumns);
+        if (typeof state.homeMinimalMode === "boolean") setHomeMinimalMode(state.homeMinimalMode);
+        if (typeof state.sidebarCollapsed === "boolean") setSidebarCollapsed(state.sidebarCollapsed);
+        if (state.displayScale) setDisplayScale(state.displayScale);
+        if (typeof state.darkMode === "boolean") setDarkMode(state.darkMode);
+        if (state.statusColors) setStatusColors({ ...defaultStatusColors, ...state.statusColors });
+        if (state.priorityColors) setPriorityColors({ ...defaultPriorityColors, ...state.priorityColors });
+        if (state.tagColors) setTagColors({ ...defaultTagColors, ...state.tagColors });
+      }
+      setCloudStatus(data?.state ? "Cloud data loaded" : "Using default sample data");
       setCloudReady(true);
     }
-
     loadCloudState();
     return () => { ignore = true; };
-  }, [selectedWorkspaceOwnerId, isSharedWorkspace, workspaceLabel]);
+  }, [session?.user?.id]);
 
   useEffect(() => {
-    if (!cloudReady || !session?.user?.id || isSharedWorkspace) return;
+    if (!cloudReady || !session?.user?.id) return;
     const handle = window.setTimeout(async () => {
       const state = {
         tasks,
@@ -1177,7 +937,6 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
         kanbanBy,
         tableColumns,
         homeMinimalMode,
-        hideDoneTasks,
         sidebarCollapsed,
         displayScale,
         darkMode,
@@ -1192,7 +951,7 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
       setCloudStatus(error ? `Cloud save failed: ${error.message}` : "Saved to cloud");
     }, 600);
     return () => window.clearTimeout(handle);
-  }, [cloudReady, session?.user?.id, isSharedWorkspace, tasks, statuses, groups, tags, priorities, defaultGroupMode, homeGroupBy, tableGroupBy, ganttGroupBy, calendarGroupBy, ganttColumns, kanbanBy, tableColumns, homeMinimalMode, hideDoneTasks, sidebarCollapsed, displayScale, darkMode, statusColors, priorityColors, tagColors]);
+  }, [cloudReady, session?.user?.id, tasks, statuses, groups, tags, priorities, defaultGroupMode, homeGroupBy, tableGroupBy, ganttGroupBy, calendarGroupBy, ganttColumns, kanbanBy, tableColumns, homeMinimalMode, sidebarCollapsed, displayScale, darkMode, statusColors, priorityColors, tagColors]);
 
 
   const canManageUsers = ["admin", "director"].includes(profile?.role);
@@ -1205,71 +964,23 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
     { name: "Master Data", icon: LayoutDashboard },
     ...(canManageUsers ? [{ name: "User Management", icon: Users }] : []),
   ];
-  
+
   useEffect(() => {
-  const allowedViews = [
-    "Home",
-    "Kanban",
-    "Table",
-    "Calendar",
-    "Gantt",
-    "Master Data",
-    ...(canManageUsers ? ["User Management"] : []),
-  ];
+    const allowedViews = [
+      "Home",
+      "Kanban",
+      "Table",
+      "Calendar",
+      "Gantt",
+      "Master Data",
+      ...(canManageUsers ? ["User Management"] : []),
+    ];
 
-  if (!allowedViews.includes(activeView)) {
-    setActiveView("Home");
-    localStorage.setItem("noteflow_active_view", "Home");
-  }
-  }, [activeView, canManageUsers]);
-
-  async function shareMyWorkspace() {
-    const normalizedEmail = shareEmail.trim().toLowerCase();
-    if (!normalizedEmail) return;
-    if (normalizedEmail === (session?.user?.email || "").toLowerCase()) {
-      setShareMessage("You cannot share with yourself.");
-      return;
+    if (!allowedViews.includes(activeView)) {
+      setActiveView("Home");
+      localStorage.setItem(activeViewStorageKey, "Home");
     }
-
-    setShareMessage("Finding user...");
-
-    const { data: targetRows, error: targetError } = await supabase.rpc("find_share_user_by_email", {
-      target_email: normalizedEmail,
-    });
-
-    if (targetError) {
-      setShareMessage(`User lookup failed: ${targetError.message}`);
-      return;
-    }
-
-    const targetProfile = Array.isArray(targetRows) ? targetRows[0] : null;
-
-    if (!targetProfile?.id) {
-      setShareMessage("No registered active user found with this email.");
-      return;
-    }
-
-    const { error } = await supabase
-      .from("task_workspace_shares")
-      .upsert(
-        {
-          owner_user_id: session.user.id,
-          shared_with_user_id: targetProfile.id,
-          shared_with_email: targetProfile.email || normalizedEmail,
-          permission: "view",
-        },
-        { onConflict: "owner_user_id,shared_with_user_id" }
-      );
-
-    if (error) {
-      setShareMessage(`Share failed: ${error.message}`);
-      return;
-    }
-
-    setShareEmail("");
-    setShareMessage(`Workspace shared with ${targetProfile.full_name || targetProfile.email || normalizedEmail}.`);
-    await loadSharedUsersList();
-  }
+  }, [activeView, canManageUsers, activeViewStorageKey]);
 
   function applyDefaultGroupMode(nextMode) {
     setDefaultGroupMode(nextMode);
@@ -1280,7 +991,6 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
   }
 
   function addQuickTask() {
-    if (!ensureEditableWorkspace()) return;
     if (!quickTitle.trim()) return;
     const task = {
       id: Date.now(),
@@ -1302,7 +1012,6 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
   }
 
   function addFloatingTask() {
-    if (!ensureEditableWorkspace()) return;
     const title = window.prompt("Task name");
     if (!title?.trim()) return;
     const remark = window.prompt("Remark") || "";
@@ -1332,7 +1041,6 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
   }
 
   function updateTask(id, patch) {
-    if (!ensureEditableWorkspace()) return;
     setTasks((current) =>
       current.map((task) => {
         if (task.id !== id) return task;
@@ -1345,7 +1053,6 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
   }
 
   function toggleSubtask(taskId, subtaskId) {
-    if (!ensureEditableWorkspace()) return;
     setTasks((current) =>
       current.map((task) => {
         if (task.id !== taskId) return task;
@@ -1360,7 +1067,6 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
   }
 
   function addSubtask(taskId) {
-    if (!ensureEditableWorkspace()) return;
     setTasks((current) =>
       current.map((task) =>
         task.id === taskId
@@ -1381,7 +1087,6 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
   }
 
   function updateSubtask(taskId, subtaskId, patch) {
-    if (!ensureEditableWorkspace()) return;
     setTasks((current) =>
       current.map((task) => {
         if (task.id !== taskId) return task;
@@ -1396,7 +1101,6 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
   }
 
   function removeSubtask(taskId, subtaskId) {
-    if (!ensureEditableWorkspace()) return;
     const ok = window.confirm("Delete this subtask?");
     if (!ok) return;
     setTasks((current) =>
@@ -1411,19 +1115,16 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
   }
 
   function removeTask(taskId) {
-    if (!ensureEditableWorkspace()) return;
     setTasks((current) => current.filter((task) => task.id !== taskId));
   }
 
   function addGroup() {
-    if (!ensureEditableWorkspace()) return;
     if (!newGroup.trim() || groups.includes(newGroup.trim())) return;
     setGroups((current) => [...current, newGroup.trim()]);
     setNewGroup("");
   }
 
   function addTag() {
-    if (!ensureEditableWorkspace()) return;
     const tagName = newTag.trim();
     if (!tagName || tags.includes(tagName)) return;
     setTags((current) => [...current, tagName]);
@@ -1432,7 +1133,6 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
   }
 
   function addStatus() {
-    if (!ensureEditableWorkspace()) return;
     const name = newStatus.trim();
     if (!name || statuses.includes(name)) return;
     setStatuses((current) => [...current, name]);
@@ -1441,7 +1141,6 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
   }
 
   function addPriority() {
-    if (!ensureEditableWorkspace()) return;
     const name = newPriority.trim();
     if (!name || priorities.includes(name)) return;
     setPriorities((current) => [...current, name]);
@@ -1468,7 +1167,6 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
   }
 
   function renameMasterItem(type, oldName, newName) {
-    if (!ensureEditableWorkspace()) return;
     const cleanName = newName.trim();
 
     if (!cleanName || cleanName === oldName) {
@@ -1519,7 +1217,6 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
   }
 
   function deleteMasterItem(type, name) {
-    if (!ensureEditableWorkspace()) return;
     const ok = window.confirm(`Delete "${name}"? Existing tasks will be moved to a safe default.`);
     if (!ok) return;
 
@@ -1566,22 +1263,18 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
   }
 
   function updateStatusColor(status, color) {
-    if (!ensureEditableWorkspace()) return;
     setStatusColors((current) => ({ ...current, [status]: color }));
   }
 
   function updatePriorityColor(priority, color) {
-    if (!ensureEditableWorkspace()) return;
     setPriorityColors((current) => ({ ...current, [priority]: color }));
   }
 
   function updateTagColor(tag, color) {
-    if (!ensureEditableWorkspace()) return;
     setTagColors((current) => ({ ...current, [tag]: color }));
   }
 
   function reorderList(type, fromIndex, toIndex) {
-    if (!ensureEditableWorkspace()) return;
     if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) return;
     const reorder = (list) => {
       const next = [...list];
@@ -1597,17 +1290,14 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
   }
 
   function toggleTableColumn(columnKey) {
-    if (!ensureEditableWorkspace()) return;
     setTableColumns((current) => ({ ...current, [columnKey]: !current[columnKey] }));
   }
 
   function toggleGanttColumn(columnKey) {
-    if (!ensureEditableWorkspace()) return;
     setGanttColumns((current) => ({ ...current, [columnKey]: !current[columnKey] }));
   }
 
   function toggleTaskTag(taskId, tag) {
-    if (!ensureEditableWorkspace()) return;
     setTasks((current) =>
       current.map((task) => {
         if (task.id !== taskId) return task;
@@ -1620,116 +1310,14 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
     );
   }
 
-
-  async function handleTaskCsvUpload(file) {
-    if (!ensureEditableWorkspace()) return;
-    if (!file) return;
-
-    try {
-      const text = await file.text();
-      const rows = parseTaskCsv(text);
-      let skipped = 0;
-
-      const missingGroups = new Set();
-      const missingStatuses = new Set();
-      const missingPriorities = new Set();
-      const missingTags = new Set();
-
-      const importedTasks = rows
-        .map((row, index) => {
-          const title = getCsvValue(row, "title", "task", "tasktitle", "name").trim();
-          if (!title) {
-            skipped += 1;
-            return null;
-          }
-
-          const group = getCsvValue(row, "group", "project") || groups[0] || "Personal";
-          const status = getCsvValue(row, "status") || statuses[1] || statuses[0] || "Open";
-          const priority = getCsvValue(row, "priority") || priorities[1] || priorities[0] || "Medium";
-          const taskTags = splitCsvList(getCsvValue(row, "tags", "tag"));
-          const subtaskTitles = splitCsvList(getCsvValue(row, "subtasks", "subtask"));
-
-          if (!groups.includes(group)) missingGroups.add(group);
-          if (!statuses.includes(status)) missingStatuses.add(status);
-          if (!priorities.includes(priority)) missingPriorities.add(priority);
-          taskTags.forEach((tag) => {
-            if (!tags.includes(tag)) missingTags.add(tag);
-          });
-
-          return {
-            id: Date.now() + index,
-            title,
-            description: getCsvValue(row, "description", "details"),
-            group,
-            status,
-            priority,
-            tags: taskTags,
-            deadline: normalizeCsvDate(getCsvValue(row, "deadline", "due", "duedate"), todayIso()),
-            completedAt: normalizeCsvDate(getCsvValue(row, "completedAt", "completion", "completiondate", "actualcompletion"), ""),
-            dependency: getCsvValue(row, "dependency", "dependson"),
-            remarks: getCsvValue(row, "remarks", "remark", "latestupdate", "notes"),
-            subtasks: subtaskTitles.map((subtaskTitle, subtaskIndex) => ({
-              id: Date.now() + index * 1000 + subtaskIndex + 1,
-              title: subtaskTitle,
-              done: false,
-            })),
-          };
-        })
-        .filter(Boolean);
-
-      if (!importedTasks.length) {
-        window.alert("No valid tasks found. CSV must have at least a title column.");
-        return;
-      }
-
-      if (missingGroups.size) setGroups((current) => [...current, ...[...missingGroups].filter((item) => !current.includes(item))]);
-      if (missingStatuses.size) {
-        setStatuses((current) => [...current, ...[...missingStatuses].filter((item) => !current.includes(item))]);
-        setStatusColors((current) => {
-          const next = { ...current };
-          missingStatuses.forEach((status) => {
-            if (!next[status]) next[status] = "#e5e5e5";
-          });
-          return next;
-        });
-      }
-      if (missingPriorities.size) {
-        setPriorities((current) => [...current, ...[...missingPriorities].filter((item) => !current.includes(item))]);
-        setPriorityColors((current) => {
-          const next = { ...current };
-          missingPriorities.forEach((priority) => {
-            if (!next[priority]) next[priority] = "#e5e5e5";
-          });
-          return next;
-        });
-      }
-      if (missingTags.size) {
-        setTags((current) => [...current, ...[...missingTags].filter((item) => !current.includes(item))]);
-        setTagColors((current) => {
-          const next = { ...current };
-          missingTags.forEach((tag) => {
-            if (!next[tag]) next[tag] = "#e5e5e5";
-          });
-          return next;
-        });
-      }
-
-      setTasks((current) => [...importedTasks, ...current]);
-      setCloudStatus(`Imported ${importedTasks.length} task${importedTasks.length === 1 ? "" : "s"} from CSV${skipped ? `, skipped ${skipped}` : ""}`);
-      window.alert(`Imported ${importedTasks.length} task${importedTasks.length === 1 ? "" : "s"} from CSV${skipped ? `\nSkipped ${skipped} row${skipped === 1 ? "" : "s"} without title.` : ""}`);
-    } catch (error) {
-      window.alert(`CSV import failed: ${error.message}`);
-    }
-  }
-
   const kanbanColumns = useMemo(() => {
     if (kanbanBy === "Status") return statuses;
     if (kanbanBy === "Group") return groups;
     if (kanbanBy === "Priority") return priorities;
-    if (kanbanBy === "Deadline") return [...new Set(visibleFilteredTasks.map((task) => task.deadline))].sort();
+    if (kanbanBy === "Deadline") return [...new Set(filteredTasks.map((task) => task.deadline))].sort();
     if (kanbanBy === "Tag") return tags;
     return statuses;
-  }, [kanbanBy, statuses, groups, tags, priorities, visibleFilteredTasks]);
+  }, [kanbanBy, statuses, groups, tags, priorities, filteredTasks]);
 
   return (
     <div className={classNames("min-h-screen transition-colors", darkMode ? "bg-neutral-950 text-neutral-100 dark" : "bg-slate-50 text-slate-900")}>
@@ -1777,10 +1365,7 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
           {!sidebarCollapsed && (
             <div className="absolute bottom-3 left-2.5 right-2.5 rounded-xl border border-slate-200 bg-white/70 p-2 text-xs dark:border-neutral-800 dark:bg-neutral-900/70">
               <div className="truncate font-semibold">{profile?.full_name || profile?.email || session?.user?.email}</div>
-              <div className="mb-1 truncate text-[10px] uppercase tracking-wide text-slate-500">{profile?.role || "member"} · {cloudStatus}</div>
-              <div className="mb-2 truncate text-[10px] text-slate-500" title={shareMessage || workspaceLabel}>
-                {isSharedWorkspace ? `Viewing: ${workspaceLabel}` : (shareMessage || workspaceLabel)}
-              </div>
+              <div className="mb-2 truncate text-[10px] uppercase tracking-wide text-slate-500">{profile?.role || "member"} · {cloudStatus}</div>
               <Button variant="outline" onClick={onSignOut} className="h-7 w-full rounded-lg px-2 text-[10px]">
                 <LogOut size={12} className="mr-1" /> Sign out
               </Button>
@@ -1798,52 +1383,6 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
                 {!(activeView === "Home" && homeMinimalMode) && <p className={classNames("text-xs sm:text-sm", darkMode ? "text-slate-400" : "text-slate-500")}>Capture notes, manage tasks, and track work from one place.</p>}
               </div>
               <div className="ml-auto flex shrink-0 items-center gap-2">
-              <div className={classNames("flex shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-medium shadow-sm", darkMode ? "border-neutral-700 bg-neutral-900 text-neutral-300" : "border-slate-200 bg-white text-slate-600")}>
-                <span className="hidden whitespace-nowrap sm:inline">Workspace</span>
-                <select
-                  value={selectedWorkspaceId}
-                  onChange={(event) => {
-                    setSelectedWorkspaceId(event.target.value);
-                    setTaskPopupId(null);
-                  }}
-                  className={classNames("h-6 max-w-[180px] rounded-md border px-1.5 text-[11px] outline-none", darkMode ? "border-neutral-700 bg-neutral-950 text-neutral-100" : "border-slate-200 bg-white text-slate-700")}
-                  title="Select workspace"
-                >
-                  <option value="mine">My Workspace</option>
-                  {workspaceShares.map((share) => (
-                    <option key={share.owner_user_id} value={share.owner_user_id}>
-                      {share.ownerName || share.ownerEmail || "Shared Workspace"}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              {!isSharedWorkspace && (
-                <div className={classNames("hidden shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-medium shadow-sm xl:flex", darkMode ? "border-neutral-700 bg-neutral-900 text-neutral-300" : "border-slate-200 bg-white text-slate-600")}>
-                  <input
-                    type="email"
-                    value={shareEmail}
-                    onChange={(event) => setShareEmail(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") shareMyWorkspace();
-                    }}
-                    placeholder="Share email"
-                    className={classNames("h-6 w-36 rounded-md border px-2 text-[11px] outline-none", darkMode ? "border-neutral-700 bg-neutral-950 text-neutral-100" : "border-slate-200 bg-white text-slate-700")}
-                  />
-                  <button
-                    type="button"
-                    onClick={shareMyWorkspace}
-                    className="rounded-md bg-slate-900 px-2 py-1 text-[10px] font-semibold text-white hover:bg-slate-700"
-                    title="Share this workspace as view only"
-                  >
-                    Share
-                  </button>
-                </div>
-              )}
-              {isSharedWorkspace && (
-                <div className="hidden rounded-full bg-amber-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-700 ring-1 ring-amber-200 xl:block">
-                  View only
-                </div>
-              )}
               {activeView === "Home" && (
                 <label className="flex shrink-0 items-center gap-2 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-600 shadow-sm">
                   <span>{homeMinimalMode ? "Minimal" : "Full"}</span>
@@ -1860,27 +1399,6 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
                       className={classNames(
                         "absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition",
                         homeMinimalMode ? "left-4" : "left-0.5"
-                      )}
-                    />
-                  </button>
-                </label>
-              )}
-              {["Kanban", "Table", "Calendar", "Gantt"].includes(activeView) && (
-                <label className={classNames("flex shrink-0 items-center gap-2 rounded-full border px-2.5 py-1 text-[11px] font-medium shadow-sm", darkMode ? "border-neutral-700 bg-neutral-900 text-neutral-300" : "border-slate-200 bg-white text-slate-600")}>
-                  <span>{hideDoneTasks ? "Done hidden" : "Done visible"}</span>
-                  <button
-                    type="button"
-                    onClick={() => setHideDoneTasks(!hideDoneTasks)}
-                    className={classNames(
-                      "relative h-4 w-8 rounded-full transition",
-                      hideDoneTasks ? "bg-slate-900" : "bg-slate-200"
-                    )}
-                    title="Hide or show Done tasks"
-                  >
-                    <span
-                      className={classNames(
-                        "absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition",
-                        hideDoneTasks ? "left-4" : "left-0.5"
                       )}
                     />
                   </button>
@@ -1941,11 +1459,6 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
             <StatCard icon={Flag} label="Overdue" value={overdueTasks.length} />
             <StatCard icon={Tag} label="Tags" value={tags.length} />
           </div>
-          {(isSharedWorkspace || shareMessage) && !(activeView === "Home" && homeMinimalMode) && (
-            <div className={classNames("mb-2 rounded-xl border px-3 py-2 text-xs", isSharedWorkspace ? "border-amber-200 bg-amber-50 text-amber-700" : "border-slate-200 bg-white text-slate-600")}>
-              {isSharedWorkspace ? `Viewing ${workspaceLabel} in read-only mode. Your own workspace is not changed.` : shareMessage}
-            </div>
-          )}
           {activeView === "Home" && (
             <HomeView
               groups={groups}
@@ -2001,7 +1514,7 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
               columns={kanbanColumns}
               statuses={statuses}
               groups={groups}
-              tasks={visibleFilteredTasks}
+              tasks={filteredTasks}
               updateTask={updateTask}
             />
           )}
@@ -2011,7 +1524,7 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
               statusColors={statusColors}
               priorityColors={priorityColors}
               tagColors={tagColors}
-              tasks={visibleFilteredTasks}
+              tasks={filteredTasks}
               statuses={statuses}
               groups={groups}
               priorities={priorities}
@@ -2023,7 +1536,6 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
               allTasks={tasks}
               tableColumns={tableColumns}
               openTaskPopup={openTaskPopup}
-              onImportCsv={handleTaskCsvUpload}
             />
           )}
 
@@ -2031,7 +1543,7 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
             <CalendarView
               statusColors={statusColors}
               priorityColors={priorityColors}
-              tasks={visibleFilteredTasks}
+              tasks={filteredTasks}
               openTaskPopup={openTaskPopup}
               calendarGroupBy={calendarGroupBy}
               setCalendarGroupBy={setCalendarGroupBy}
@@ -2041,7 +1553,7 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
             <GanttView
               statusColors={statusColors}
               priorityColors={priorityColors}
-              tasks={visibleFilteredTasks}
+              tasks={filteredTasks}
               groups={groups}
               statuses={statuses}
               priorities={priorities}
@@ -2099,12 +1611,6 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
               reorderList={reorderList}
               tableColumns={tableColumns}
               toggleTableColumn={toggleTableColumn}
-              sharedUsers={sharedUsers}
-              shareEmail={shareEmail}
-              setShareEmail={setShareEmail}
-              shareMyWorkspace={shareMyWorkspace}
-              shareMessage={shareMessage}
-              removeSharedUser={removeSharedUser}
             />
           )}
         </div>
@@ -2892,7 +2398,7 @@ function TaskCard({ task, statuses, groups, priorities = ["High", "Medium", "Low
   );
 }
 
-function TableView({ statusColors, priorityColors, tagColors, tasks, statuses, groups, priorities = ["High", "Medium", "Low"], tags, tableGroupBy, setTableGroupBy, updateTask, removeTask, allTasks, tableColumns, openTaskPopup, onImportCsv }) {
+function TableView({ statusColors, priorityColors, tagColors, tasks, statuses, groups, priorities = ["High", "Medium", "Low"], tags, tableGroupBy, setTableGroupBy, updateTask, removeTask, allTasks, tableColumns, openTaskPopup }) {
   const [sortConfig, setSortConfig] = useState({ key: "deadline", direction: "asc" });
 
   function getSortValue(task, key) {
@@ -2966,7 +2472,6 @@ function TableView({ statusColors, priorityColors, tagColors, tasks, statuses, g
     let order = [];
     if (tableGroupBy === "Group") order = groups;
     if (tableGroupBy === "Status") order = statuses;
-    if (tableGroupBy === "Priority") order = priorities;
     if (tableGroupBy === "Tag") order = tags.map((tag) => `#${tag}`);
 
     const entries = Object.entries(bucket).map(([title, tasks]) => ({ title, tasks }));
@@ -2977,7 +2482,7 @@ function TableView({ statusColors, priorityColors, tagColors, tasks, statuses, g
       return entries.sort((a, b) => order.indexOf(a.title) - order.indexOf(b.title));
     }
     return entries;
-  }, [sortedTasks, tableGroupBy, groups, statuses, priorities, tags]);
+  }, [sortedTasks, tableGroupBy, groups, statuses, tags]);
 
   return (
     <div className="space-y-2">
@@ -2988,19 +2493,6 @@ function TableView({ statusColors, priorityColors, tagColors, tasks, statuses, g
             <p className="text-xs text-slate-500">Spreadsheet-style overview with grouped sections and wider title/remark space.</p>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <label className="inline-flex h-8 cursor-pointer items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50">
-              Upload CSV
-              <input
-                type="file"
-                accept=".csv,text/csv"
-                className="hidden"
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  event.target.value = "";
-                  if (file && onImportCsv) onImportCsv(file);
-                }}
-              />
-            </label>
             <div className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">{sortedTasks.length} tasks</div>
             <select
               aria-label="Group table by"
@@ -3081,14 +2573,7 @@ function TableView({ statusColors, priorityColors, tagColors, tasks, statuses, g
                       <tr key={task.id} className="border-t border-slate-100 align-top hover:bg-slate-50/70">
                         {tableColumns.task && (
                           <td className="px-2 py-1.5">
-                            <button
-                              type="button"
-                              onClick={() => openTaskPopup(task.id)}
-                              className="text-left text-sm leading-snug text-slate-950 hover:underline"
-                              style={{ fontWeight: 600 }}
-                            >
-                              {task.title}
-                            </button>
+                            <button type="button" onClick={() => openTaskPopup(task.id)} className="text-left text-xs font-semibold leading-snug text-slate-900 hover:underline">{task.title}</button>
                             {task.description && <div className="mt-0.5 text-[11px] leading-snug text-slate-500">{task.description}</div>}
                           </td>
                         )}
@@ -3266,12 +2751,11 @@ function KanbanView({ statusColors, priorityColors, tagColors, openTaskPopup, ka
       <div className="flex max-h-[calc(100vh-145px)] gap-2 overflow-x-auto overflow-y-hidden pb-1">
         {columns.map((column, index) => {
           const columnTasks = getColumnTasks(column);
-          if (columnTasks.length === 0) return null;
           return (
             <div
               key={column}
               className={classNames(
-                "kanban-group-card flex h-[calc(100vh-190px)] min-h-[560px] w-[260px] shrink-0 flex-col rounded-xl border p-1.5 shadow-sm sm:w-[280px]",
+                "kanban-group-card flex min-h-[500px] w-[260px] shrink-0 flex-col rounded-xl border p-1.5 shadow-sm sm:w-[280px]",
                 groupSectionClass(index),
                 `kanban-group-color-${index % 6}`
               )}
@@ -4194,12 +3678,6 @@ function MasterDataView({
   reorderList,
   tableColumns,
   toggleTableColumn,
-  sharedUsers = [],
-  shareEmail = "",
-  setShareEmail = () => {},
-  shareMyWorkspace = () => {},
-  shareMessage = "",
-  removeSharedUser = () => {},
 }) {
   const groupingOptions = ["None", "Group", "Status", "Priority", "Deadline", "Tag"];
 
@@ -4252,67 +3730,6 @@ function MasterDataView({
                 <span className="truncate">{column.label}</span>
               </label>
             ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="master-panel rounded-xl border-slate-200 shadow-sm lg:col-span-3">
-        <CardContent className="p-3">
-          <div className="mb-2 flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <h2 className="panel-title mb-1 text-base font-semibold">Shared Users</h2>
-              <p className="text-xs text-slate-500">Manage users who can view your workspace. Workspace dropdown remains available in the top bar.</p>
-            </div>
-            <span className="w-fit rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-500">
-              {sharedUsers.length} shared
-            </span>
-          </div>
-
-          <div className="mb-3 grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_110px]">
-            <Input
-              type="email"
-              value={shareEmail}
-              onChange={(event) => setShareEmail(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") shareMyWorkspace();
-              }}
-              placeholder="Type registered user email to share..."
-              className="h-9 rounded-xl text-xs"
-            />
-            <Button onClick={shareMyWorkspace} className="h-9 rounded-xl px-3 text-xs">
-              Share
-            </Button>
-          </div>
-
-          {shareMessage && (
-            <div className="mb-2 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
-              {shareMessage}
-            </div>
-          )}
-
-          <div className="max-h-[260px] space-y-1.5 overflow-y-auto pr-1">
-            {sharedUsers.length ? (
-              sharedUsers.map((share) => (
-                <div key={share.id} className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs shadow-sm">
-                  <div className="min-w-0">
-                    <div className="truncate font-semibold text-slate-800">{share.userName || share.shared_with_email}</div>
-                    <div className="truncate text-[11px] text-slate-500">{share.userEmail || share.shared_with_email}</div>
-                    <div className="mt-0.5 text-[10px] uppercase tracking-wide text-slate-400">{share.permission || "view"} access</div>
-                  </div>
-                  <Button
-                    variant="outline"
-                    onClick={() => removeSharedUser(share)}
-                    className="h-8 shrink-0 rounded-lg px-2 text-[10px] text-red-600 hover:text-red-700"
-                  >
-                    Remove
-                  </Button>
-                </div>
-              ))
-            ) : (
-              <div className="rounded-xl border border-dashed border-slate-200 px-3 py-5 text-center text-xs text-slate-400">
-                No users currently have access to your workspace.
-              </div>
-            )}
           </div>
         </CardContent>
       </Card>
