@@ -1807,7 +1807,7 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
             <div className="flex w-full min-w-0 items-center justify-between gap-3">
               <div className="min-w-0">
                 <h1 className={classNames("font-bold tracking-tight", activeView === "Home" && homeMinimalMode ? "text-lg" : "text-xl sm:text-2xl")}>{activeView}</h1>
-                {!(activeView === "Home" && homeMinimalMode) && <p className={classNames("text-xs sm:text-sm", darkMode ? "text-slate-400" : "text-slate-500")}>Capture notes, manage tasks, and track work from one place.</p>}
+                {!(activeView === "Home" && homeMinimalMode) && <p className={classNames("hidden sm:block text-xs sm:text-sm", darkMode ? "text-slate-400" : "text-slate-500")}>Capture notes, manage tasks, and track work from one place.</p>}
               </div>
               <div className="ml-auto flex shrink-0 items-center gap-2">
               <div className={classNames("flex shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-medium shadow-sm", darkMode ? "border-neutral-700 bg-neutral-900 text-neutral-300" : "border-slate-200 bg-white text-slate-600")}>
