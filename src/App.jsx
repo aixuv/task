@@ -1205,6 +1205,23 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
     { name: "Master Data", icon: LayoutDashboard },
     ...(canManageUsers ? [{ name: "User Management", icon: Users }] : []),
   ];
+  
+  useEffect(() => {
+  const allowedViews = [
+    "Home",
+    "Kanban",
+    "Table",
+    "Calendar",
+    "Gantt",
+    "Master Data",
+    ...(canManageUsers ? ["User Management"] : []),
+  ];
+
+  if (!allowedViews.includes(activeView)) {
+    setActiveView("Home");
+    localStorage.setItem("noteflow_active_view", "Home");
+  }
+  }, [activeView, canManageUsers]);
 
   async function shareMyWorkspace() {
     const normalizedEmail = shareEmail.trim().toLowerCase();
