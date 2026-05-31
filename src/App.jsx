@@ -1804,12 +1804,13 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
           className={classNames("min-w-0 flex-1", activeView === "Home" && homeMinimalMode ? "p-2" : "p-2 sm:p-3 lg:p-4")}
         >
           <div className={classNames("flex w-full flex-col lg:flex-row lg:items-center lg:justify-between", activeView === "Home" && homeMinimalMode ? "mb-1 gap-1" : "mb-2 gap-2")}>
-            <div className="flex w-full min-w-0 items-center justify-between gap-3">
+            <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
                 <h1 className={classNames("font-bold tracking-tight", activeView === "Home" && homeMinimalMode ? "text-lg" : "text-xl sm:text-2xl")}>{activeView}</h1>
-                {!(activeView === "Home" && homeMinimalMode) && <p className={classNames("hidden sm:block text-xs sm:text-sm", darkMode ? "text-slate-400" : "text-slate-500")}>Capture notes, manage tasks, and track work from one place.</p>}
+                {!(activeView === "Home" && homeMinimalMode) && <p className={classNames("hidden sm:block text-xs sm:text-sm", darkMode ? "text-slate-400" : "text-slate-500")}>
+  Capture notes, manage tasks, and track work from one place.</p>}
               </div>
-              <div className="ml-auto flex shrink-0 items-center gap-2">
+              <div className="flex w-full items-center gap-2 overflow-x-auto pb-1 sm:ml-auto sm:w-auto sm:shrink-0 sm:justify-end sm:overflow-visible sm:pb-0">
               <div className={classNames("flex shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-medium shadow-sm", darkMode ? "border-neutral-700 bg-neutral-900 text-neutral-300" : "border-slate-200 bg-white text-slate-600")}>
                 <span className="hidden whitespace-nowrap sm:inline">Workspace</span>
                 <select
@@ -1818,7 +1819,7 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
                     setSelectedWorkspaceId(event.target.value);
                     setTaskPopupId(null);
                   }}
-                  className={classNames("h-6 max-w-[180px] rounded-md border px-1.5 text-[11px] outline-none", darkMode ? "border-neutral-700 bg-neutral-950 text-neutral-100" : "border-slate-200 bg-white text-slate-700")}
+                  className={classNames("h-8 w-[170px] max-w-[45vw] rounded-xl border px-2 text-[11px] outline-none", darkMode ? "border-neutral-700 bg-neutral-950 text-neutral-100" : "border-slate-200 bg-white text-slate-700")}
                   title="Select workspace"
                 >
                   <option value="mine">My Workspace</option>
