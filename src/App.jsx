@@ -3064,7 +3064,14 @@ function TableView({ statusColors, priorityColors, tagColors, tasks, statuses, g
                       <tr key={task.id} className="border-t border-slate-100 align-top hover:bg-slate-50/70">
                         {tableColumns.task && (
                           <td className="px-2 py-1.5">
-                            <button type="button" onClick={() => openTaskPopup(task.id)} className="text-left text-sm font-extrabold leading-snug text-slate-900 hover:underline">{task.title}</button>
+                            <button
+                              type="button"
+                              onClick={() => openTaskPopup(task.id)}
+                              className="text-left text-sm leading-snug text-slate-950 hover:underline"
+                              style={{ fontWeight: 800 }}
+                            >
+                              {task.title}
+                            </button>
                             {task.description && <div className="mt-0.5 text-[11px] leading-snug text-slate-500">{task.description}</div>}
                           </td>
                         )}
