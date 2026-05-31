@@ -3242,11 +3242,12 @@ function KanbanView({ statusColors, priorityColors, tagColors, openTaskPopup, ka
       <div className="flex max-h-[calc(100vh-145px)] gap-2 overflow-x-auto overflow-y-hidden pb-1">
         {columns.map((column, index) => {
           const columnTasks = getColumnTasks(column);
+          if (columnTasks.length === 0) return null;
           return (
             <div
               key={column}
               className={classNames(
-                "kanban-group-card flex min-h-[500px] w-[260px] shrink-0 flex-col rounded-xl border p-1.5 shadow-sm sm:w-[280px]",
+                "kanban-group-card flex h-[calc(100vh-190px)] min-h-[560px] w-[260px] shrink-0 flex-col rounded-xl border p-1.5 shadow-sm sm:w-[280px]",
                 groupSectionClass(index),
                 `kanban-group-color-${index % 6}`
               )}
