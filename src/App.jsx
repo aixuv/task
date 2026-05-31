@@ -936,6 +936,7 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
   const [cloudReady, setCloudReady] = useState(false);
   const [cloudStatus, setCloudStatus] = useState("Loading cloud data...");
   const [workspaceShares, setWorkspaceShares] = useState([]);
+  const [sharedUsers, setSharedUsers] = useState([]);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState("mine");
   const [shareEmail, setShareEmail] = useState("");
   const [shareMessage, setShareMessage] = useState("");
@@ -990,6 +991,63 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
     setTagColors({ ...defaultTagColors, ...(state.tagColors || {}) });
   }
 
+  async function loadSharedUsersList() {
+    if (!currentUserId) {
+      setSharedUsers([]);
+      return;
+    }
+
+    const { data: shares, error } = await supabase
+      .from("task_workspace_shares")
+      .select("id, shared_with_user_id, shared_with_email, permission, created_at")
+      .eq("owner_user_id", currentUserId)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      setShareMessage(`Shared users load failed: ${error.message}`);
+      setSharedUsers([]);
+      return;
+    }
+
+    const sharedUserIds = [...new Set((shares || []).map((share) => share.shared_with_user_id).filter(Boolean))];
+    let profiles = [];
+
+    if (sharedUserIds.length) {
+      const { data: profileRows } = await supabase
+        .from("user_profiles")
+        .select("id,email,full_name")
+        .in("id", sharedUserIds);
+      profiles = profileRows || [];
+    }
+
+    const profileById = Object.fromEntries(profiles.map((item) => [item.id, item]));
+    setSharedUsers((shares || []).map((share) => ({
+      ...share,
+      userEmail: profileById[share.shared_with_user_id]?.email || share.shared_with_email || "",
+      userName: profileById[share.shared_with_user_id]?.full_name || profileById[share.shared_with_user_id]?.email || share.shared_with_email || "Shared user",
+    })));
+  }
+
+  async function removeSharedUser(share) {
+    if (!share?.id) return;
+    const ok = window.confirm(`Remove sharing access for ${share.userName || share.shared_with_email || "this user"}?`);
+    if (!ok) return;
+
+    const { error } = await supabase
+      .from("task_workspace_shares")
+      .delete()
+      .eq("id", share.id)
+      .eq("owner_user_id", currentUserId);
+
+    if (error) {
+      setShareMessage(`Remove share failed: ${error.message}`);
+      return;
+    }
+
+    setShareMessage(`Removed sharing access for ${share.userName || share.shared_with_email || "user"}.`);
+    await loadSharedUsersList();
+  }
+
   useEffect(() => {
     let ignore = false;
 
@@ -1038,6 +1096,10 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
     loadWorkspaceShares();
     return () => { ignore = true; };
   }, [currentUserId, selectedWorkspaceId]);
+
+  useEffect(() => {
+    loadSharedUsersList();
+  }, [currentUserId]);
 
   const filteredTasks = useMemo(() => {
     return tasks.filter((task) => {
@@ -1189,6 +1251,7 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
 
     setShareEmail("");
     setShareMessage(`Workspace shared with ${targetProfile.full_name || targetProfile.email || normalizedEmail}.`);
+    await loadSharedUsersList();
   }
 
   function applyDefaultGroupMode(nextMode) {
@@ -2019,6 +2082,12 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
               reorderList={reorderList}
               tableColumns={tableColumns}
               toggleTableColumn={toggleTableColumn}
+              sharedUsers={sharedUsers}
+              shareEmail={shareEmail}
+              setShareEmail={setShareEmail}
+              shareMyWorkspace={shareMyWorkspace}
+              shareMessage={shareMessage}
+              removeSharedUser={removeSharedUser}
             />
           )}
         </div>
@@ -4100,6 +4169,12 @@ function MasterDataView({
   reorderList,
   tableColumns,
   toggleTableColumn,
+  sharedUsers = [],
+  shareEmail = "",
+  setShareEmail = () => {},
+  shareMyWorkspace = () => {},
+  shareMessage = "",
+  removeSharedUser = () => {},
 }) {
   const groupingOptions = ["None", "Group", "Status", "Priority", "Deadline", "Tag"];
 
@@ -4152,6 +4227,67 @@ function MasterDataView({
                 <span className="truncate">{column.label}</span>
               </label>
             ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="master-panel rounded-xl border-slate-200 shadow-sm lg:col-span-3">
+        <CardContent className="p-3">
+          <div className="mb-2 flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <h2 className="panel-title mb-1 text-base font-semibold">Shared Users</h2>
+              <p className="text-xs text-slate-500">Manage users who can view your workspace. Workspace dropdown remains available in the top bar.</p>
+            </div>
+            <span className="w-fit rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-500">
+              {sharedUsers.length} shared
+            </span>
+          </div>
+
+          <div className="mb-3 grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_110px]">
+            <Input
+              type="email"
+              value={shareEmail}
+              onChange={(event) => setShareEmail(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") shareMyWorkspace();
+              }}
+              placeholder="Type registered user email to share..."
+              className="h-9 rounded-xl text-xs"
+            />
+            <Button onClick={shareMyWorkspace} className="h-9 rounded-xl px-3 text-xs">
+              Share
+            </Button>
+          </div>
+
+          {shareMessage && (
+            <div className="mb-2 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              {shareMessage}
+            </div>
+          )}
+
+          <div className="max-h-[260px] space-y-1.5 overflow-y-auto pr-1">
+            {sharedUsers.length ? (
+              sharedUsers.map((share) => (
+                <div key={share.id} className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs shadow-sm">
+                  <div className="min-w-0">
+                    <div className="truncate font-semibold text-slate-800">{share.userName || share.shared_with_email}</div>
+                    <div className="truncate text-[11px] text-slate-500">{share.userEmail || share.shared_with_email}</div>
+                    <div className="mt-0.5 text-[10px] uppercase tracking-wide text-slate-400">{share.permission || "view"} access</div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    onClick={() => removeSharedUser(share)}
+                    className="h-8 shrink-0 rounded-lg px-2 text-[10px] text-red-600 hover:text-red-700"
+                  >
+                    Remove
+                  </Button>
+                </div>
+              ))
+            ) : (
+              <div className="rounded-xl border border-dashed border-slate-200 px-3 py-5 text-center text-xs text-slate-400">
+                No users currently have access to your workspace.
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
