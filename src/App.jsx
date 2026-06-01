@@ -953,6 +953,12 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
     localStorage.setItem(activeViewStorageKey, activeView);
   }, [activeView, activeViewStorageKey, session?.user?.id]);
 
+  useEffect(() => {
+  if (!groups.includes(quickGroup)) {
+    setQuickGroup(groups[0] || "Personal");
+  }
+  }, [groups, quickGroup]);
+
   const currentUserId = session?.user?.id || "";
   const selectedWorkspaceOwnerId = selectedWorkspaceId === "mine" ? currentUserId : selectedWorkspaceId;
   const selectedWorkspaceShare = workspaceShares.find((share) => share.owner_user_id === selectedWorkspaceId);
@@ -2292,7 +2298,9 @@ function HomeView(props) {
                   className="h-8 rounded-xl border border-slate-200 bg-white px-2 text-xs"
                 >
                   {groups.map((group) => (
-                    <option key={group}>{group}</option>
+                    <option key={group} value={group}>
+                      {group}
+                    </option>
                   ))}
                 </select>
                 <Input
