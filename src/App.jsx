@@ -1066,11 +1066,7 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
     async function loadWorkspaceShares() {
       if (!currentUserId) return;
 
-      const { data: shares, error } = await supabase
-        .from("task_workspace_shares")
-        .select("owner_user_id, shared_with_email, permission, created_at")
-        .eq("shared_with_user_id", currentUserId)
-        .order("created_at", { ascending: false });
+      const { data: shares, error } = await supabase.rpc("get_my_shared_workspaces");
 
       if (ignore) return;
 
@@ -1080,27 +1076,17 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
         return;
       }
 
-      const ownerIds = [...new Set((shares || []).map((share) => share.owner_user_id).filter(Boolean))];
-      let profiles = [];
+      setWorkspaceShares(
+        (shares || []).map((item) => ({
+          owner_user_id: item.owner_user_id,
+          ownerEmail: item.owner_email,
+          ownerName: item.owner_name,
+          permission: item.permission,
+          created_at: item.created_at,
+        }))
+      );
 
-      if (ownerIds.length) {
-        const { data: profileRows } = await supabase
-          .from("user_profiles")
-          .select("id,email,full_name")
-          .in("id", ownerIds);
-        profiles = profileRows || [];
-      }
-
-      const profileById = Object.fromEntries(profiles.map((item) => [item.id, item]));
-      const mergedShares = (shares || []).map((share) => ({
-        ...share,
-        ownerEmail: profileById[share.owner_user_id]?.email || "",
-        ownerName: profileById[share.owner_user_id]?.full_name || profileById[share.owner_user_id]?.email || "Shared Workspace",
-      }));
-
-      setWorkspaceShares(mergedShares);
-
-      if (selectedWorkspaceId !== "mine" && !mergedShares.some((share) => share.owner_user_id === selectedWorkspaceId)) {
+      if (selectedWorkspaceId !== "mine" && !(shares || []).some((share) => share.owner_user_id === selectedWorkspaceId)) {
         setSelectedWorkspaceId("mine");
       }
     }
