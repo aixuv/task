@@ -2206,9 +2206,9 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
               setHomeFiltersOpen={setHomeFiltersOpen}
               openTaskPopup={openTaskPopup}
               reorderTasks={reorderTasks}
+              addHistory={addHistory}
               startHistoryField={startHistoryField}
               commitHistoryField={commitHistoryField}
-              addHistory={addHistory}
             />
           )}
 
@@ -2539,9 +2539,10 @@ function HomeView(props) {
     setHomeFiltersOpen,
     openTaskPopup,
     reorderTasks,
+    addHistory,
     startHistoryField,
     commitHistoryField,
-    addHistory,
+    
   } = props;
 
   const [selectionMode, setSelectionMode] = useState(false);
@@ -2836,6 +2837,7 @@ function HomeView(props) {
                       updateTask={updateMinimalTask}
                       openTaskPopup={openTaskPopup}
                       reorderTasks={reorderTasks}
+                      addHistory={addHistory}
                     />
                   ) : (
                   <TaskCard
@@ -2887,7 +2889,7 @@ function HomeView(props) {
   );
 }
 
-function MinimalTaskRow({ task, statuses, selectionMode, isSelected, selectedCount, toggleTaskSelection, updateTask, openTaskPopup, reorderTasks }) {
+function MinimalTaskRow({ task, statuses, selectionMode, isSelected, selectedCount, toggleTaskSelection, updateTask, openTaskPopup, reorderTasks, addHistory }) {
   const batchHint = selectionMode && isSelected && selectedCount > 1 ? `Editing this row updates ${selectedCount} selected tasks` : "";
 
   return (
@@ -2934,7 +2936,7 @@ function MinimalTaskRow({ task, statuses, selectionMode, isSelected, selectedCou
             const oldValue = event.currentTarget.dataset.historyStart || "";
             const newValue = event.target.value || "";
 
-            if (oldValue !== newValue) {
+            if (oldValue !== newValue && typeof addHistory === "function") {
               addHistory({
                 type: "remarks_changed",
                 taskId: task.id,
