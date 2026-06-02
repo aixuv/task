@@ -2925,21 +2925,28 @@ function MinimalTaskRow({ task, statuses, selectionMode, isSelected, selectedCou
         </button>
         <input
           value={task.remarks || ""}
-          onFocus={() => startHistoryField(`task-remarks-${task.id}`, task.remarks || "")}
-          onBlur={(event) =>
-            commitHistoryField(`task-remarks-${task.id}`, {
-              type: "remarks_changed",
-              taskId: task.id,
-              taskTitle: task.title,
-              label: `Remark changed in "${task.title}"`,
-              newValue: event.target.value,
-            })
-          }
+          onFocus={(event) => {
+            event.currentTarget.dataset.historyStart = task.remarks || "";
+          }}
+          onBlur={(event) => {
+            const oldValue = event.currentTarget.dataset.historyStart || "";
+            const newValue = event.target.value || "";
+
+            if (oldValue !== newValue) {
+              addHistory({
+                type: "remarks_changed",
+                taskId: task.id,
+                taskTitle: task.title,
+                message: `Remark changed in "${task.title}": ${oldValue || "empty"} → ${newValue || "empty"}`,
+              });
+            }
+          }}
           onChange={(event) => updateTask(task.id, { remarks: event.target.value })}
           className="h-7 min-w-0 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-600 outline-none focus:border-slate-400"
           placeholder="Remark..."
           title={batchHint || "Remark"}
         />
+
         <select
           value={task.status}
           onChange={(event) => updateTask(task.id, { status: event.target.value })}
