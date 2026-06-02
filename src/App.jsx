@@ -921,6 +921,7 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
   const [history, setHistory] = useState([]);
   const [historyFromDate, setHistoryFromDate] = useState("");
   const [historyToDate, setHistoryToDate] = useState("");
+  const [historyFieldStart, setHistoryFieldStart] = useState({});
   const [statuses, setStatuses] = useState(initialStatuses);
   const [groups, setGroups] = useState(initialGroups);
   const [tags, setTags] = useState(initialTags);
@@ -1029,6 +1030,33 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
       },
       ...(Array.isArray(current) ? current : []),
     ].slice(0, 2000));
+  }
+
+  function startHistoryField(key, value) {
+    setHistoryFieldStart((current) => ({
+      ...current,
+      [key]: value || "",
+    }));
+  }
+
+  function commitHistoryField(key, entry) {
+    const oldValue = historyFieldStart[key] ?? "";
+    const newValue = entry.newValue || "";
+
+    if (oldValue !== newValue) {
+      addHistory({
+        type: entry.type || "text_changed",
+        taskId: entry.taskId,
+        taskTitle: entry.taskTitle,
+        message: `${entry.label}: ${formatHistoryValue(oldValue)} → ${formatHistoryValue(newValue)}`,
+      });
+    }
+
+    setHistoryFieldStart((current) => {
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
   }
 
   function deleteHistoryByDateRange() {
@@ -1460,6 +1488,8 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
         };
 
         Object.entries(patch).forEach(([key, newValue]) => {
+          if (["title", "description", "remarks"].includes(key)) return;
+
           const oldValue = task[key];
           if (JSON.stringify(oldValue) === JSON.stringify(newValue)) return;
           const label = labelMap[key] || `${key} changed`;
@@ -1533,14 +1563,6 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
         if (task.id !== taskId) return task;
         const oldSubtask = (task.subtasks || []).find((subtask) => subtask.id === subtaskId);
 
-        if (oldSubtask && patch.title !== undefined && oldSubtask.title !== patch.title) {
-          addHistory({
-            type: "subtask_updated",
-            taskId: task.id,
-            taskTitle: task.title,
-            message: `Subtask edited in "${task.title}": ${oldSubtask.title || "empty"} → ${patch.title || "empty"}`,
-          });
-        }
 
         if (oldSubtask && patch.done !== undefined && oldSubtask.done !== patch.done) {
           addHistory({
@@ -2184,6 +2206,8 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
               setHomeFiltersOpen={setHomeFiltersOpen}
               openTaskPopup={openTaskPopup}
               reorderTasks={reorderTasks}
+              startHistoryField={startHistoryField}
+              commitHistoryField={commitHistoryField}
             />
           )}
 
@@ -2223,6 +2247,8 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
               openTaskPopup={openTaskPopup}
               onImportCsv={handleTaskCsvUpload}
               reorderTasks={reorderTasks}
+              startHistoryField={startHistoryField}
+              commitHistoryField={commitHistoryField}
             />
           )}
 
@@ -2335,6 +2361,8 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
               updateSubtask={updateSubtask}
               removeSubtask={removeSubtask}
               removeTask={removeTask}
+              startHistoryField={startHistoryField}
+              commitHistoryField={commitHistoryField}
               onClose={closeTaskPopup}
             />
           )}
@@ -2510,6 +2538,8 @@ function HomeView(props) {
     setHomeFiltersOpen,
     openTaskPopup,
     reorderTasks,
+    startHistoryField,
+    commitHistoryField,
   } = props;
 
   const [selectionMode, setSelectionMode] = useState(false);
@@ -2826,6 +2856,8 @@ function HomeView(props) {
                     allTasks={allTasks}
                     openTaskPopup={openTaskPopup}
                     reorderTasks={reorderTasks}
+                    startHistoryField={startHistoryField}
+                    commitHistoryField={commitHistoryField}
                   />
                   )
                 ))}
@@ -2893,6 +2925,16 @@ function MinimalTaskRow({ task, statuses, selectionMode, isSelected, selectedCou
         </button>
         <input
           value={task.remarks}
+          onFocus={() => startHistoryField(`task-remarks-${task.id}`, task.remarks)}
+          onBlur={(event) =>
+            commitHistoryField(`task-remarks-${task.id}`, {
+              type: "remarks_changed",
+              taskId: task.id,
+              taskTitle: task.title,
+              label: `Remark changed in "${task.title}"`,
+              newValue: event.target.value,
+            })
+          }
           onChange={(event) => updateTask(task.id, { remarks: event.target.value })}
           className="h-7 min-w-0 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-600 outline-none focus:border-slate-400"
           placeholder="Remark..."
@@ -2936,7 +2978,7 @@ function CompactDatePicker({ value, onChange, title = "Deadline" }) {
   );
 }
 
-function TaskCard({ task, statuses, groups, priorities = ["High", "Medium", "Low"], tags, statusColors, priorityColors, tagColors, updateTask, toggleSubtask, addSubtask, updateSubtask = () => {}, removeSubtask = () => {}, removeTask, toggleTaskTag, allTasks, openTaskPopup, reorderTasks }) {
+function TaskCard({ task, statuses, groups, priorities = ["High", "Medium", "Low"], tags, statusColors, priorityColors, tagColors, updateTask, toggleSubtask, addSubtask, updateSubtask = () => {}, removeSubtask = () => {}, removeTask, toggleTaskTag, allTasks, openTaskPopup, reorderTasks, startHistoryField = () => {}, commitHistoryField = () => {} }) {
   const progress = getProgress(task);
   const [expanded, setExpanded] = useState(false);
   const taskPriorityAccent = {
@@ -3133,6 +3175,16 @@ function TaskCard({ task, statuses, groups, priorities = ["High", "Medium", "Low
                         <input
                           value={subtask.title}
                           onClick={(event) => event.stopPropagation()}
+                          onFocus={() => startHistoryField(`subtask-title-${task.id}-${subtask.id}`, subtask.title)}
+                          onBlur={(event) =>
+                            commitHistoryField(`subtask-title-${task.id}-${subtask.id}`, {
+                              type: "subtask_updated",
+                              taskId: task.id,
+                              taskTitle: task.title,
+                              label: `Subtask edited in "${task.title}"`,
+                              newValue: event.target.value,
+                            })
+                          }
                           onChange={(event) => updateSubtask(task.id, subtask.id, { title: event.target.value })}
                           className={classNames(
                             "h-6 min-w-0 flex-1 rounded-md border border-slate-200 bg-white px-2 text-[11px] outline-none focus:border-slate-400",
@@ -3164,6 +3216,16 @@ function TaskCard({ task, statuses, groups, priorities = ["High", "Medium", "Low
                 <Textarea
                   value={task.remarks}
                   onClick={(event) => event.stopPropagation()}
+                  onFocus={() => startHistoryField(`task-remarks-${task.id}`, task.remarks)}
+                  onBlur={(event) =>
+                    commitHistoryField(`task-remarks-${task.id}`, {
+                      type: "remarks_changed",
+                      taskId: task.id,
+                      taskTitle: task.title,
+                      label: `Remark changed in "${task.title}"`,
+                      newValue: event.target.value,
+                    })
+                  }
                   onChange={(event) => updateTask(task.id, { remarks: event.target.value })}
                   className="min-h-[110px] w-full resize-y rounded-md text-[11px]"
                   placeholder="Add latest remark..."
@@ -3228,7 +3290,7 @@ function TaskCard({ task, statuses, groups, priorities = ["High", "Medium", "Low
   );
 }
 
-function TableView({ statusColors, priorityColors, tagColors, tasks, statuses, groups, priorities = ["High", "Medium", "Low"], tags, tableGroupBy, setTableGroupBy, updateTask, removeTask, allTasks, tableColumns, openTaskPopup, onImportCsv, reorderTasks }) {
+function TableView({ statusColors, priorityColors, tagColors, tasks, statuses, groups, priorities = ["High", "Medium", "Low"], tags, tableGroupBy, setTableGroupBy, updateTask, removeTask, allTasks, tableColumns, openTaskPopup, onImportCsv, reorderTasks, startHistoryField = () => {}, commitHistoryField = () => {} }) {
   const [sortConfig, setSortConfig] = useState({ key: "order", direction: "asc" });
 
   function getSortValue(task, key) {
@@ -3525,6 +3587,16 @@ function TableView({ statusColors, priorityColors, tagColors, tasks, statuses, g
                           <td className="px-2 py-1.5">
                             <Textarea
                               value={task.remarks}
+                              onFocus={() => startHistoryField(`task-remarks-${task.id}`, task.remarks)}
+                              onBlur={(event) =>
+                                commitHistoryField(`task-remarks-${task.id}`, {
+                                  type: "remarks_changed",
+                                  taskId: task.id,
+                                  taskTitle: task.title,
+                                  label: `Remark changed in "${task.title}"`,
+                                  newValue: event.target.value,
+                                })
+                              }
                               onChange={(event) => updateTask(task.id, { remarks: event.target.value })}
                               className="min-h-9 w-full rounded-md text-[11px] leading-snug"
                               placeholder="Add remark..."
@@ -4202,7 +4274,7 @@ function GanttView({ statusColors, priorityColors, tasks, groups, statuses, prio
   );
 }
 
-function TaskDetailModal({ statusColors, priorityColors, tagColors, task, statuses, groups, priorities = ["High", "Medium", "Low"], tags, allTasks, updateTask, toggleSubtask, addSubtask, updateSubtask = () => {}, removeSubtask = () => {}, removeTask, onClose }) {
+function TaskDetailModal({ statusColors, priorityColors, tagColors, task, statuses, groups, priorities = ["High", "Medium", "Low"], tags, allTasks, updateTask, toggleSubtask, addSubtask, updateSubtask = () => {}, removeSubtask = () => {}, removeTask, startHistoryField = () => {}, commitHistoryField = () => {}, onClose }) {
   const [draft, setDraft] = useState(task || null);
 
   useEffect(() => {
@@ -4260,6 +4332,16 @@ function TaskDetailModal({ statusColors, priorityColors, tagColors, task, status
                 </label>
                 <Input
                   value={draft.title}
+                  onFocus={() => startHistoryField(`task-title-${task.id}`, task.title)}
+                  onBlur={(event) =>
+                    commitHistoryField(`task-title-${task.id}`, {
+                      type: "title_changed",
+                      taskId: task.id,
+                      taskTitle: task.title,
+                      label: `Title changed in "${task.title}"`,
+                      newValue: event.target.value,
+                    })
+                  }
                   onChange={(e) => updateDraft({ title: e.target.value })}
                   className="h-10 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none focus:border-slate-400"
                 />
@@ -4271,6 +4353,16 @@ function TaskDetailModal({ statusColors, priorityColors, tagColors, task, status
                 </label>
                 <Textarea
                   value={draft.description}
+                  onFocus={() => startHistoryField(`task-description-${task.id}`, task.description)}
+                  onBlur={(event) =>
+                    commitHistoryField(`task-description-${task.id}`, {
+                      type: "description_changed",
+                      taskId: task.id,
+                      taskTitle: task.title,
+                      label: `Description changed in "${task.title}"`,
+                      newValue: event.target.value,
+                    })
+                  }
                   onChange={(e) => updateDraft({ description: e.target.value })}
                   className="min-h-[96px] w-full min-w-0 resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-400"
                 />
@@ -4282,6 +4374,16 @@ function TaskDetailModal({ statusColors, priorityColors, tagColors, task, status
                 </label>
                 <Textarea
                   value={draft.remarks}
+                  onFocus={() => startHistoryField(`task-remarks-${task.id}`, task.remarks)}
+                  onBlur={(event) =>
+                    commitHistoryField(`task-remarks-${task.id}`, {
+                      type: "remarks_changed",
+                      taskId: task.id,
+                      taskTitle: task.title,
+                      label: `Remark changed in "${task.title}"`,
+                      newValue: event.target.value,
+                    })
+                  }
                   onChange={(e) => updateDraft({ remarks: e.target.value })}
                   className="min-h-[140px] w-full min-w-0 resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-400"
                 />
@@ -4305,6 +4407,16 @@ function TaskDetailModal({ statusColors, priorityColors, tagColors, task, status
                       />
                       <Input
                         value={subtask.title}
+                        onFocus={() => startHistoryField(`subtask-title-${task.id}-${subtask.id}`, subtask.title)}
+                        onBlur={(event) =>
+                          commitHistoryField(`subtask-title-${task.id}-${subtask.id}`, {
+                            type: "subtask_updated",
+                            taskId: task.id,
+                            taskTitle: task.title,
+                            label: `Subtask edited in "${task.title}"`,
+                            newValue: event.target.value,
+                          })
+                        }
                         onChange={(event) => updateSubtask(task.id, subtask.id, { title: event.target.value })}
                         className={classNames(
                           "h-7 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2 text-xs outline-none focus:border-slate-400",
