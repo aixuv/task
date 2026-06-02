@@ -2471,7 +2471,38 @@ function HistoryView({
     setDeleteFromDate("");
     setDeleteToDate("");
   }
+  const historyCardColors = [
+  "border-emerald-200 bg-emerald-50 text-emerald-950 shadow-emerald-100",
+  "border-amber-200 bg-amber-50 text-amber-950 shadow-amber-100",
+  "border-rose-200 bg-rose-50 text-rose-950 shadow-rose-100",
+  "border-violet-200 bg-violet-50 text-violet-950 shadow-violet-100",
+  "border-cyan-200 bg-cyan-50 text-cyan-950 shadow-cyan-100",
+  "border-orange-200 bg-orange-50 text-orange-950 shadow-orange-100",
+  "border-lime-200 bg-lime-50 text-lime-950 shadow-lime-100",
+  "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-950 shadow-fuchsia-100",
+  ];
 
+  const historyNumberColors = [
+    "text-emerald-900",
+    "text-amber-900",
+    "text-rose-900",
+    "text-violet-900",
+    "text-cyan-900",
+    "text-orange-900",
+    "text-lime-900",
+    "text-fuchsia-900",
+  ];
+
+  const historyLabelColors = [
+    "text-emerald-700",
+    "text-amber-700",
+    "text-rose-700",
+    "text-violet-700",
+    "text-cyan-700",
+    "text-orange-700",
+    "text-lime-700",
+    "text-fuchsia-700",
+  ];
   return (
     <div className="space-y-3">
       <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
@@ -2548,18 +2579,41 @@ function HistoryView({
           <div className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">All Changes</div>
         </button>
 
-        {reportCounts.map((card) => (
+        {reportCounts.map((card, cardIndex) => (
           <button
             key={card.key}
             type="button"
             onClick={() => setSelectedHistoryReport(card.key)}
             className={classNames(
-              "rounded-xl border bg-white p-3 text-left shadow-sm transition hover:border-slate-400",
-              selectedHistoryReport === card.key ? "border-slate-900 ring-1 ring-slate-900" : "border-slate-200"
+              "rounded-xl border p-3 text-left shadow-sm transition hover:scale-[1.01]",
+              card.count > 0
+                ? historyCardColors[cardIndex % historyCardColors.length]
+                : "border-slate-200 bg-white text-slate-500",
+              selectedHistoryReport === card.key
+                ? "border-slate-900 ring-2 ring-slate-900/10"
+                : ""
             )}
           >
-            <div className="text-2xl font-black text-slate-900">{card.count}</div>
-            <div className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">{card.label}</div>
+            <div
+              className={classNames(
+                "text-2xl font-extrabold",
+                card.count > 0
+                  ? historyNumberColors[cardIndex % historyNumberColors.length]
+                  : "text-slate-400"
+              )}
+            >
+              {card.count}
+            </div>
+            <div
+              className={classNames(
+                "mt-1 text-xs font-bold uppercase tracking-wide",
+                card.count > 0
+                  ? historyLabelColors[cardIndex % historyLabelColors.length]
+                  : "text-slate-400"
+              )}
+            >
+              {card.label}
+            </div>
           </button>
         ))}
 
