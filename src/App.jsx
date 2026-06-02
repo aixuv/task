@@ -2208,6 +2208,7 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
               reorderTasks={reorderTasks}
               startHistoryField={startHistoryField}
               commitHistoryField={commitHistoryField}
+              addHistory={addHistory}
             />
           )}
 
@@ -2540,6 +2541,7 @@ function HomeView(props) {
     reorderTasks,
     startHistoryField,
     commitHistoryField,
+    addHistory,
   } = props;
 
   const [selectionMode, setSelectionMode] = useState(false);
