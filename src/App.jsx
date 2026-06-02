@@ -921,6 +921,7 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
   const [history, setHistory] = useState([]);
   const [historyFromDate, setHistoryFromDate] = useState("");
   const [historyToDate, setHistoryToDate] = useState("");
+  const [selectedHistoryReport, setSelectedHistoryReport] = useState("");
   const [historyFieldStart, setHistoryFieldStart] = useState({});
   const [statuses, setStatuses] = useState(initialStatuses);
   const [groups, setGroups] = useState(initialGroups);
@@ -1059,21 +1060,21 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
     });
   }
 
-  function deleteHistoryByDateRange() {
-    if (!historyFromDate || !historyToDate) {
+  function deleteHistoryByDateRange(fromDate, toDate) {
+    if (!fromDate || !toDate) {
       window.alert("Select From and To date first.");
       return;
     }
 
-    const from = new Date(`${historyFromDate}T00:00:00`);
-    const to = new Date(`${historyToDate}T23:59:59`);
+    const from = new Date(`${fromDate}T00:00:00`);
+    const to = new Date(`${toDate}T23:59:59`);
 
     if (from > to) {
       window.alert("From date cannot be after To date.");
       return;
     }
 
-    const ok = window.confirm(`Delete history from ${historyFromDate} to ${historyToDate}?`);
+    const ok = window.confirm(`Delete history from ${fromDate} to ${toDate}? This cannot be undone.`);
     if (!ok) return;
 
     setHistory((current) =>
@@ -2341,6 +2342,8 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
               setHistoryFromDate={setHistoryFromDate}
               historyToDate={historyToDate}
               setHistoryToDate={setHistoryToDate}
+              selectedHistoryReport={selectedHistoryReport}
+              setSelectedHistoryReport={setSelectedHistoryReport}
               deleteHistoryByDateRange={deleteHistoryByDateRange}
             />
           )}
@@ -2381,10 +2384,74 @@ function HistoryView({
   setHistoryFromDate,
   historyToDate,
   setHistoryToDate,
+  selectedHistoryReport,
+  setSelectedHistoryReport,
   deleteHistoryByDateRange,
 }) {
+  const [deleteHistoryOpen, setDeleteHistoryOpen] = useState(false);
+  const [deleteFromDate, setDeleteFromDate] = useState("");
+  const [deleteToDate, setDeleteToDate] = useState("");
+
   const safeHistory = Array.isArray(history) ? history : [];
-  const groupedHistory = safeHistory.reduce((acc, item) => {
+
+  const reportCards = [
+    { key: "task_added", label: "Tasks Added" },
+    { key: "task_deleted", label: "Tasks Deleted" },
+    { key: "status_changed", label: "Status Changed" },
+    { key: "priority_changed", label: "Priority Changed" },
+    { key: "group_changed", label: "Group Changed" },
+    { key: "deadline_changed", label: "Deadline Shifted" },
+    { key: "completedAt_changed", label: "Completion Changed" },
+    { key: "dependency_changed", label: "Dependency Changed" },
+    { key: "remarks_changed", label: "Remarks Updated" },
+    { key: "tag_added", label: "Tags Added" },
+    { key: "tag_removed", label: "Tags Removed" },
+    { key: "subtask_added", label: "Subtasks Added" },
+    { key: "subtask_completed", label: "Subtasks Completed" },
+    { key: "subtask_uncompleted", label: "Subtasks Reopened" },
+    { key: "subtask_deleted", label: "Subtasks Deleted" },
+    { key: "title_changed", label: "Titles Changed" },
+    { key: "description_changed", label: "Descriptions Changed" },
+  ];
+
+  const filteredHistory = safeHistory.filter((item) => {
+    if (!item?.createdAt) return false;
+    const itemDate = new Date(item.createdAt);
+
+    if (historyFromDate) {
+      const from = new Date(`${historyFromDate}T00:00:00`);
+      if (itemDate < from) return false;
+    }
+
+    if (historyToDate) {
+      const to = new Date(`${historyToDate}T23:59:59`);
+      if (itemDate > to) return false;
+    }
+
+    return true;
+  });
+
+  const knownReportKeys = reportCards.map((card) => card.key);
+  const otherHistory = filteredHistory.filter((item) => !knownReportKeys.includes(item.type));
+
+  const reportCounts = reportCards.map((card) => ({
+    ...card,
+    count: filteredHistory.filter((item) => item.type === card.key).length,
+  }));
+
+  const selectedReportLabel =
+    selectedHistoryReport === "other"
+      ? "Other Changes"
+      : reportCards.find((card) => card.key === selectedHistoryReport)?.label || "All Changes";
+
+  const selectedReportItems =
+    selectedHistoryReport === "other"
+      ? otherHistory
+      : selectedHistoryReport
+        ? filteredHistory.filter((item) => item.type === selectedHistoryReport)
+        : filteredHistory;
+
+  const groupedHistory = selectedReportItems.reduce((acc, item) => {
     const dateKey = item?.createdAt ? item.createdAt.slice(0, 10) : "Unknown date";
     if (!acc[dateKey]) acc[dateKey] = [];
     acc[dateKey].push(item);
@@ -2393,25 +2460,46 @@ function HistoryView({
 
   const sortedDates = Object.keys(groupedHistory).sort((a, b) => b.localeCompare(a));
 
+  function confirmDeleteHistory() {
+    if (!deleteFromDate || !deleteToDate) {
+      window.alert("Select From and To date first.");
+      return;
+    }
+
+    deleteHistoryByDateRange(deleteFromDate, deleteToDate);
+    setDeleteHistoryOpen(false);
+    setDeleteFromDate("");
+    setDeleteToDate("");
+  }
+
   return (
     <div className="space-y-3">
       <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h2 className="text-base font-bold text-slate-900">History</h2>
+            <h2 className="text-base font-bold text-slate-900">History Report</h2>
             <p className="mt-1 text-xs text-slate-500">
-              Daily change log of tasks, deadlines, status, priority, tags, subtasks, and dependencies.
+              Select a date range to review activity. Click any card to see detailed entries below.
             </p>
           </div>
-          <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-            {safeHistory.length} entries
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+              {filteredHistory.length} shown / {safeHistory.length} total
+            </div>
+            <button
+              type="button"
+              onClick={() => setDeleteHistoryOpen(true)}
+              className="h-7 rounded-full border border-red-200 bg-red-50 px-3 text-[11px] font-semibold text-red-600 hover:bg-red-100"
+            >
+              Delete history
+            </button>
           </div>
         </div>
 
         <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-[160px_160px_auto] sm:items-end">
           <div>
             <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-              From date
+              Report from
             </label>
             <input
               type="date"
@@ -2423,7 +2511,7 @@ function HistoryView({
 
           <div>
             <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-              To date
+              Report to
             </label>
             <input
               type="date"
@@ -2435,51 +2523,175 @@ function HistoryView({
 
           <button
             type="button"
-            onClick={deleteHistoryByDateRange}
-            className="h-9 rounded-lg bg-red-600 px-3 text-xs font-semibold text-white hover:bg-red-700"
+            onClick={() => {
+              setHistoryFromDate("");
+              setHistoryToDate("");
+              setSelectedHistoryReport("");
+            }}
+            className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 hover:bg-slate-50"
           >
-            Delete selected range
+            Clear report filter
           </button>
         </div>
       </div>
 
-      {!safeHistory.length ? (
-        <div className="rounded-xl border border-dashed border-slate-200 bg-white p-6 text-center text-sm text-slate-400">
-          No history yet.
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">
+        <button
+          type="button"
+          onClick={() => setSelectedHistoryReport("")}
+          className={classNames(
+            "rounded-xl border bg-white p-3 text-left shadow-sm transition hover:border-slate-400",
+            !selectedHistoryReport ? "border-slate-900 ring-1 ring-slate-900" : "border-slate-200"
+          )}
+        >
+          <div className="text-2xl font-black text-slate-900">{filteredHistory.length}</div>
+          <div className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">All Changes</div>
+        </button>
+
+        {reportCounts.map((card) => (
+          <button
+            key={card.key}
+            type="button"
+            onClick={() => setSelectedHistoryReport(card.key)}
+            className={classNames(
+              "rounded-xl border bg-white p-3 text-left shadow-sm transition hover:border-slate-400",
+              selectedHistoryReport === card.key ? "border-slate-900 ring-1 ring-slate-900" : "border-slate-200"
+            )}
+          >
+            <div className="text-2xl font-black text-slate-900">{card.count}</div>
+            <div className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">{card.label}</div>
+          </button>
+        ))}
+
+        {!!otherHistory.length && (
+          <button
+            type="button"
+            onClick={() => setSelectedHistoryReport("other")}
+            className={classNames(
+              "rounded-xl border bg-white p-3 text-left shadow-sm transition hover:border-slate-400",
+              selectedHistoryReport === "other" ? "border-slate-900 ring-1 ring-slate-900" : "border-slate-200"
+            )}
+          >
+            <div className="text-2xl font-black text-slate-900">{otherHistory.length}</div>
+            <div className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Other Changes</div>
+          </button>
+        )}
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+        <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="text-sm font-bold text-slate-900">{selectedReportLabel}</h3>
+            <p className="text-xs text-slate-500">
+              {selectedReportItems.length} entries in selected report range.
+            </p>
+          </div>
+          {selectedHistoryReport && (
+            <button
+              type="button"
+              onClick={() => setSelectedHistoryReport("")}
+              className="text-xs font-semibold text-slate-500 hover:text-slate-900"
+            >
+              Show all
+            </button>
+          )}
         </div>
-      ) : (
-        sortedDates.map((date) => (
-          <div key={date} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-            <div className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">
-              {date}
+
+        {!selectedReportItems.length ? (
+          <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-400">
+            No history found for this report selection.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {sortedDates.map((date) => (
+              <div key={date} className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+                <div className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">
+                  {date}
+                </div>
+
+                <div className="space-y-2">
+                  {(groupedHistory[date] || []).map((item) => (
+                    <div
+                      key={item.id}
+                      className="rounded-lg border border-slate-100 bg-white px-3 py-2"
+                    >
+                      <div className="text-[10px] text-slate-400">
+                        {item.createdAt
+                          ? new Date(item.createdAt).toLocaleTimeString([], {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })
+                          : ""}
+                      </div>
+                      <div className="text-xs font-medium text-slate-800">
+                        {item.message || "Change recorded"}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {deleteHistoryOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+          <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
+            <h3 className="text-sm font-bold text-slate-900">Delete history by date range</h3>
+            <p className="mt-1 text-xs text-slate-500">
+              This uses its own date range and will not affect the report filter above.
+            </p>
+
+            <div className="mt-3 space-y-2">
+              <div>
+                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                  Delete from
+                </label>
+                <input
+                  type="date"
+                  value={deleteFromDate}
+                  onChange={(event) => setDeleteFromDate(event.target.value)}
+                  className="h-9 w-full rounded-lg border border-slate-200 px-2 text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                  Delete to
+                </label>
+                <input
+                  type="date"
+                  value={deleteToDate}
+                  onChange={(event) => setDeleteToDate(event.target.value)}
+                  className="h-9 w-full rounded-lg border border-slate-200 px-2 text-xs"
+                />
+              </div>
             </div>
 
-            <div className="space-y-2">
-              {(groupedHistory[date] || []).map((item) => (
-                <div
-                  key={item.id}
-                  className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2"
-                >
-                  <div className="text-[10px] text-slate-400">
-                    {item.createdAt
-                      ? new Date(item.createdAt).toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })
-                      : ""}
-                  </div>
-                  <div className="text-xs font-medium text-slate-800">
-                    {item.message || "Change recorded"}
-                  </div>
-                </div>
-              ))}
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteHistoryOpen(false)}
+                className="h-8 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteHistory}
+                className="h-8 rounded-lg bg-red-600 px-3 text-xs font-semibold text-white hover:bg-red-700"
+              >
+                Delete
+              </button>
             </div>
           </div>
-        ))
+        </div>
       )}
     </div>
   );
 }
+
 
 function StatCard({ icon: Icon, label, value }) {
   return (
