@@ -2924,8 +2924,8 @@ function MinimalTaskRow({ task, statuses, selectionMode, isSelected, selectedCou
           {task.title}
         </button>
         <input
-          value={task.remarks}
-          onFocus={() => startHistoryField(`task-remarks-${task.id}`, task.remarks)}
+          value={task.remarks || ""}
+          onFocus={() => startHistoryField(`task-remarks-${task.id}`, task.remarks || "")}
           onBlur={(event) =>
             commitHistoryField(`task-remarks-${task.id}`, {
               type: "remarks_changed",
