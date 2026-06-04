@@ -4672,9 +4672,11 @@ function GanttView({ statusColors, priorityColors, tasks, groups, statuses, prio
 
 function TaskDetailModal({ statusColors, priorityColors, tagColors, task, statuses, groups, priorities = ["High", "Medium", "Low"], tags, allTasks, updateTask, toggleSubtask, addSubtask, updateSubtask = () => {}, removeSubtask = () => {}, removeTask, startHistoryField = () => {}, commitHistoryField = () => {}, onClose }) {
   const [draft, setDraft] = useState(task || null);
+  const [editingLinkId, setEditingLinkId] = useState(null);
 
   useEffect(() => {
     setDraft(task || null);
+    setEditingLinkId(null);
   }, [task]);
 
   useEffect(() => {
@@ -4694,12 +4696,14 @@ function TaskDetailModal({ statusColors, priorityColors, tagColors, task, status
   }
 
   function addTaskLink() {
+    const newLinkId = Date.now();
     updateDraft({
       links: [
         ...draftLinks,
-        { id: Date.now(), title: "", url: "" },
+        { id: newLinkId, title: "", url: "" },
       ],
     });
+    setEditingLinkId(newLinkId);
   }
 
   function updateTaskLink(linkId, patch) {
@@ -4941,56 +4945,99 @@ function TaskDetailModal({ statusColors, priorityColors, tagColors, task, status
                     Add
                   </Button>
                 </div>
-                <div className="overflow-hidden rounded-lg border border-slate-200">
-                  <div className="grid grid-cols-[42px_minmax(120px,1fr)_minmax(0,1.2fr)_50px_58px] border-b border-slate-200 bg-slate-50 px-2 py-1.5 text-[10px] font-semibold text-slate-500">
+                <div className="overflow-hidden rounded-lg border border-slate-200 text-[11px]">
+                  <div className="grid grid-cols-[34px_minmax(120px,1.1fr)_minmax(120px,1.5fr)_42px_48px] border-b border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-semibold text-slate-500">
                     <div>S.no.</div>
                     <div>Title</div>
                     <div>Link</div>
                     <div className="text-center">Edit</div>
                     <div className="text-center">Delete</div>
                   </div>
-                  {draftLinks.length ? draftLinks.map((link, linkIndex) => (
-                    <div key={link.id} className="grid grid-cols-[42px_minmax(120px,1fr)_minmax(0,1.2fr)_50px_58px] items-center gap-1.5 border-b border-slate-100 px-2 py-1.5 last:border-b-0">
-                      <div className="text-xs text-slate-500">{linkIndex + 1}</div>
-                      <Input
-                        value={link.title}
-                        onChange={(event) => updateTaskLink(link.id, { title: event.target.value })}
-                        placeholder="Title"
-                        className="h-7 min-w-0 rounded-lg text-xs"
-                      />
-                      <Input
-                        value={link.url}
-                        onChange={(event) => updateTaskLink(link.id, { url: event.target.value })}
-                        placeholder="https://..."
-                        className="h-7 min-w-0 truncate rounded-lg text-xs"
-                        title={link.url}
-                      />
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          const nextTitle = window.prompt("Link title", link.title);
-                          if (nextTitle === null) return;
-                          const nextUrl = window.prompt("Link URL", link.url);
-                          if (nextUrl === null) return;
-                          updateTaskLink(link.id, { title: nextTitle, url: nextUrl });
-                        }}
-                        className="h-7 rounded-lg px-2 text-[10px]"
-                        title="Edit link"
-                      >
-                        Edit
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => removeTaskLink(link.id)}
-                        className="h-7 rounded-lg px-2 text-[10px] text-red-500 hover:text-red-700"
-                        title="Delete link"
-                      >
-                        Del
-                      </Button>
-                    </div>
-                  )) : (
+                  {draftLinks.length ? draftLinks.map((link, linkIndex) => {
+                    const linkHref = link.url ? normalizeHref(link.url) : "";
+                    const isEditing = editingLinkId === link.id;
+                    return (
+                      <div key={link.id} className="grid grid-cols-[34px_minmax(120px,1.1fr)_minmax(120px,1.5fr)_42px_48px] items-center gap-1.5 border-b border-slate-100 px-2 py-1 last:border-b-0">
+                        <div className="text-[11px] text-slate-500">
+                          {linkHref ? (
+                            <a
+                              href={linkHref}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(event) => event.stopPropagation()}
+                              className="font-medium text-blue-600 underline hover:text-blue-800"
+                              title={link.url}
+                            >
+                              {linkIndex + 1}
+                            </a>
+                          ) : (
+                            linkIndex + 1
+                          )}
+                        </div>
+                        {isEditing ? (
+                          <Input
+                            value={link.title}
+                            onChange={(event) => updateTaskLink(link.id, { title: event.target.value })}
+                            placeholder="Title"
+                            className="h-6 min-w-0 rounded-lg px-2 text-[11px]"
+                          />
+                        ) : linkHref ? (
+                          <a
+                            href={linkHref}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(event) => event.stopPropagation()}
+                            className="whitespace-normal break-words font-medium text-blue-600 underline hover:text-blue-800"
+                            title={link.url}
+                          >
+                            {link.title || "Untitled link"}
+                          </a>
+                        ) : (
+                          <div className="whitespace-normal break-words text-slate-700">{link.title || "Untitled link"}</div>
+                        )}
+                        {isEditing ? (
+                          <Input
+                            value={link.url}
+                            onChange={(event) => updateTaskLink(link.id, { url: event.target.value })}
+                            placeholder="https://..."
+                            className="h-6 min-w-0 rounded-lg px-2 text-[11px]"
+                            title={link.url}
+                          />
+                        ) : linkHref ? (
+                          <a
+                            href={linkHref}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(event) => event.stopPropagation()}
+                            className="block min-w-0 truncate text-blue-600 underline hover:text-blue-800"
+                            title={link.url}
+                          >
+                            {link.url}
+                          </a>
+                        ) : (
+                          <div className="truncate text-slate-400">No URL</div>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setEditingLinkId(isEditing ? null : link.id)}
+                          className="h-6 rounded-lg px-1.5 text-[10px]"
+                          title={isEditing ? "Done editing" : "Edit link"}
+                        >
+                          {isEditing ? "Done" : "Edit"}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeTaskLink(link.id)}
+                          className="h-6 rounded-lg px-1.5 text-[10px] text-red-500 hover:text-red-700"
+                          title="Delete link"
+                        >
+                          Del
+                        </Button>
+                      </div>
+                    );
+                  }) : (
                     <div className="px-2 py-3 text-center text-xs text-slate-400">
                       No links yet.
                     </div>
