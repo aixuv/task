@@ -411,6 +411,48 @@ function chipStyleFromColor(color) {
   };
 }
 
+
+function LinkifyText({ text }) {
+  if (!text) return null;
+
+  const urlRegex = /(https?:\/\/[^\s<>"']+|www\.[^\s<>"']+)/gi;
+
+  return String(text).split(urlRegex).map((part, index) => {
+    const isLink = /^(https?:\/\/|www\.)/i.test(part);
+
+    if (!isLink) return <span key={index}>{part}</span>;
+
+    const href = part.startsWith("http") ? part : `https://${part}`;
+
+    return (
+      <a
+        key={index}
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={(event) => event.stopPropagation()}
+        className="text-blue-600 underline hover:text-blue-800"
+      >
+        {part}
+      </a>
+    );
+  });
+}
+
+function HistoryMessage({ message }) {
+  const parts = String(message || "Change recorded").split(/(<strong>.*?<\/strong>)/g);
+
+  return (
+    <>
+      {parts.map((part, index) => {
+        const boldMatch = part.match(/^<strong>(.*?)<\/strong>$/);
+        if (boldMatch) return <strong key={index}>{boldMatch[1]}</strong>;
+        return <span key={index}>{part}</span>;
+      })}
+    </>
+  );
+}
+
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -1422,7 +1464,7 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
       type: "task_added",
       taskId: task.id,
       taskTitle: task.title,
-      message: `Task added: "${task.title}"`,
+      message: `Task added: "${task.title}" in Group <strong>${task.group || "No Group"}</strong>`,
     });
     setQuickTitle("");
     setQuickRemark("");
@@ -1453,7 +1495,7 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
       type: "task_added",
       taskId: task.id,
       taskTitle: task.title,
-      message: `Task added: "${task.title}"`,
+      message: `Task added: "${task.title}" in Group <strong>${task.group || "No Group"}</strong>`,
     });
   }
 
@@ -2678,7 +2720,7 @@ function HistoryView({
                           : ""}
                       </div>
                       <div className="text-xs font-medium text-slate-800">
-                        {item.message || "Change recorded"}
+                        <HistoryMessage message={item.message} />
                       </div>
                     </div>
                   ))}
@@ -3315,7 +3357,7 @@ function TaskCard({ task, statuses, groups, priorities = ["High", "Medium", "Low
               </div>
 
               <div className="mt-0.5 min-w-0 truncate text-xs text-slate-400" title={task.remarks || "No remark"}>
-                {task.remarks ? `Remark: ${task.remarks}` : "No remark"}
+                {task.remarks ? <><span>Remark: </span><LinkifyText text={task.remarks} /></> : "No remark"}
               </div>
             </div>
 
@@ -3769,7 +3811,7 @@ function TableView({ statusColors, priorityColors, tagColors, tasks, statuses, g
                         {tableColumns.task && (
                           <td className="px-2 py-1.5">
                             <button type="button" onClick={() => openTaskPopup(task.id)} className="text-left text-xs font-semibold leading-snug text-slate-900 hover:underline">{task.title}</button>
-                            {task.description && <div className="mt-0.5 text-[11px] leading-snug text-slate-500">{task.description}</div>}
+                            {task.description && <div className="mt-0.5 text-[11px] leading-snug text-slate-500"><LinkifyText text={task.description} /></div>}
                           </td>
                         )}
                         {tableColumns.status && (
@@ -3999,7 +4041,7 @@ function KanbanView({ statusColors, priorityColors, tagColors, openTaskPopup, ka
                     </div>
 
                     {task.remarks && (
-                      <div className="mb-1.5 line-clamp-2 text-[11px] leading-snug text-slate-500">{task.remarks}</div>
+                      <div className="mb-1.5 line-clamp-2 text-[11px] leading-snug text-slate-500"><LinkifyText text={task.remarks} /></div>
                     )}
 
                     <div className="mb-1.5 flex flex-wrap items-center gap-1.5 text-[10px] text-slate-500">
