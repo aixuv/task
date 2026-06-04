@@ -2069,22 +2069,8 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
     return statuses;
   }, [kanbanBy, statuses, groups, tags, priorities, visibleFilteredTasks]);
 
-  const displayScaleRatio = Math.max(75, Math.min(130, Number(displayScale) || 100)) / 100;
-  const scaledViewSize = (vh, px = 0) => `calc(${vh / displayScaleRatio}vh - ${px / displayScaleRatio}px)`;
-  const displayScaleStyle = {
-    zoom: displayScaleRatio,
-    "--scaled-vh-70": scaledViewSize(100, 70),
-    "--scaled-vh-104": scaledViewSize(100, 104),
-    "--scaled-vh-145": scaledViewSize(100, 145),
-    "--scaled-vh-160": scaledViewSize(100, 160),
-    "--scaled-vh-170": scaledViewSize(100, 170),
-    "--scaled-vh-190": scaledViewSize(100, 190),
-    "--scaled-74vh": scaledViewSize(74, 0),
-    "--scaled-76vh": scaledViewSize(76, 0),
-  };
-
   return (
-    <div className={classNames("min-h-screen overflow-x-hidden transition-colors", darkMode ? "bg-neutral-950 text-neutral-100 dark" : "bg-slate-50 text-slate-900")}>
+    <div className={classNames("min-h-screen transition-colors", darkMode ? "bg-neutral-950 text-neutral-100 dark" : "bg-slate-50 text-slate-900")}>
       <style>{appStyles}</style>
       <div className="app-surface min-h-screen">
       <div className="flex">
@@ -2286,7 +2272,7 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
             </div>
           </div>
 
-          <div style={displayScaleStyle}>
+          <div style={{ zoom: displayScale / 100 }}>
           <div className={classNames("grid grid-cols-2 gap-1.5 sm:gap-2 lg:grid-cols-4", activeView === "Home" && homeMinimalMode ? "hidden" : "mb-2")}>
             <StatCard icon={Clock} label="Open Tasks" value={tasks.filter((t) => t.status !== "Done").length} />
             <StatCard icon={CheckCircle2} label="Completed" value={doneTasks.length} />
@@ -3000,6 +2986,7 @@ function HomeView(props) {
     let order = [];
     if (homeGroupBy === "Group") order = groups;
     if (homeGroupBy === "Status") order = statuses;
+    if (homeGroupBy === "Priority") order = priorities;
     if (homeGroupBy === "Tag") order = tags.map((tag) => `#${tag}`);
 
     const entries = Object.entries(bucket).map(([title, tasks]) => ({ title, tasks }));
@@ -3010,7 +2997,7 @@ function HomeView(props) {
       return entries.sort((a, b) => order.indexOf(a.title) - order.indexOf(b.title));
     }
     return entries;
-  }, [openTasks, homeGroupBy, groups, statuses, tags]);
+  }, [openTasks, homeGroupBy, groups, statuses, priorities, tags]);
 
   return (
     <div className={classNames("relative min-w-0", homeMinimalMode ? "" : "grid grid-cols-1 gap-2 xl:grid-cols-[260px_minmax(0,1fr)] 2xl:grid-cols-[280px_minmax(0,1fr)]")}>
@@ -3199,7 +3186,7 @@ function HomeView(props) {
           </CardContent>
         </Card>
 
-        <div className={classNames("grid grid-cols-1 overflow-y-auto pr-1", homeMinimalMode ? (homeFiltersOpen ? "max-h-[var(--scaled-vh-104)] gap-0.5" : "max-h-[var(--scaled-vh-70)] gap-0.5") : "max-h-[var(--scaled-76vh)] gap-2 sm:max-h-[var(--scaled-74vh)] lg:max-h-[var(--scaled-vh-170)] xl:max-h-[var(--scaled-vh-160)]")}>
+        <div className={classNames("grid grid-cols-1 overflow-y-auto pr-1", homeMinimalMode ? (homeFiltersOpen ? "max-h-[calc(100vh-104px)] gap-0.5" : "max-h-[calc(100vh-70px)] gap-0.5") : "max-h-[76vh] gap-2 sm:max-h-[74vh] lg:max-h-[calc(100vh-170px)] xl:max-h-[calc(100vh-160px)]")}>
           {groupedOpenTasks.map((section, index) => (
             <div
               key={section.title}
@@ -3829,7 +3816,7 @@ function TableView({ statusColors, priorityColors, tagColors, tasks, statuses, g
         </CardContent>
       </Card>
 
-      <div className="max-h-[var(--scaled-vh-145)] space-y-2 overflow-y-auto pr-1">
+      <div className="max-h-[calc(100vh-145px)] space-y-2 overflow-y-auto pr-1">
         {groupedTableTasks.map((section, index) => (
           <div
             key={section.title}
@@ -4086,7 +4073,7 @@ function KanbanView({ statusColors, priorityColors, tagColors, openTaskPopup, ka
         </CardContent>
       </Card>
 
-      <div className="flex max-h-[var(--scaled-vh-145)] gap-2 overflow-x-auto overflow-y-hidden pb-1">
+      <div className="flex max-h-[calc(100vh-145px)] gap-2 overflow-x-auto overflow-y-hidden pb-1">
         {columns.map((column, index) => {
           const columnTasks = getColumnTasks(column);
           if (columnTasks.length === 0) return null;
@@ -4094,7 +4081,7 @@ function KanbanView({ statusColors, priorityColors, tagColors, openTaskPopup, ka
             <div
               key={column}
               className={classNames(
-                "kanban-group-card flex h-[var(--scaled-vh-190)] min-h-[560px] w-[260px] shrink-0 flex-col rounded-xl border p-1.5 shadow-sm sm:w-[280px]",
+                "kanban-group-card flex h-[calc(100vh-190px)] min-h-[560px] w-[260px] shrink-0 flex-col rounded-xl border p-1.5 shadow-sm sm:w-[280px]",
                 groupSectionClass(index),
                 `kanban-group-color-${index % 6}`
               )}
@@ -4256,7 +4243,7 @@ function CalendarView({ statusColors, priorityColors, tasks, openTaskPopup, cale
         </CardContent>
       </Card>
 
-      <div className="grid max-h-[var(--scaled-vh-145)] grid-cols-1 gap-2 overflow-y-auto pr-1 lg:grid-cols-3">
+      <div className="grid max-h-[calc(100vh-145px)] grid-cols-1 gap-2 overflow-y-auto pr-1 lg:grid-cols-3">
         {groupedCalendarTasks.map((section, index) => (
           <Card key={section.title} className={classNames("grouped-section rounded-xl shadow-sm", calendarGroupBy === "Day" ? classNames("border-slate-200", `group-card-color-${index % 6}`) : classNames(groupSectionClass(index), `group-card-color-${index % 6}`))}>
             <CardContent className="p-3">
@@ -4502,7 +4489,7 @@ function GanttView({ statusColors, priorityColors, tasks, groups, statuses, prio
         </CardContent>
       </Card>
 
-      <div className="max-h-[var(--scaled-vh-145)] space-y-2 overflow-y-auto pr-1">
+      <div className="max-h-[calc(100vh-145px)] space-y-2 overflow-y-auto pr-1">
         {groupedGanttTasks.map((section, index) => (
           <div
             key={section.title}
