@@ -412,32 +412,102 @@ function chipStyleFromColor(color) {
 }
 
 
-function LinkifyText({ text }) {
+
+function normalizeHref(url) {
+  const cleanUrl = String(url || "").trim();
+  if (!cleanUrl) return "";
+  return /^https?:\/\//i.test(cleanUrl) ? cleanUrl : `https://${cleanUrl}`;
+}
+
+function normalizeTaskLinks(links = []) {
+  if (!Array.isArray(links)) return [];
+  return links.map((link, index) => ({
+    id: link?.id || `link-${index}`,
+    title: String(link?.title || "").trim(),
+    url: String(link?.url || link?.href || "").trim(),
+  }));
+}
+
+function isWordCharacter(char) {
+  return /[A-Za-z0-9_]/.test(char || "");
+}
+
+function LinkifyText({ text, links = [] }) {
   if (!text) return null;
 
-  const urlRegex = /(https?:\/\/[^\s<>"']+|www\.[^\s<>"']+)/gi;
+  const value = String(text);
+  const taskLinks = normalizeTaskLinks(links)
+    .filter((link) => link.title && link.url)
+    .sort((a, b) => b.title.length - a.title.length);
+  const urlRegex = /^(https?:\/\/[^\s<>"']+|www\.[^\s<>"']+)/i;
+  const parts = [];
+  let buffer = "";
+  let index = 0;
 
-  return String(text).split(urlRegex).map((part, index) => {
-    const isLink = /^(https?:\/\/|www\.)/i.test(part);
+  function flushBuffer() {
+    if (!buffer) return;
+    parts.push(<span key={`text-${parts.length}`}>{buffer}</span>);
+    buffer = "";
+  }
 
-    if (!isLink) return <span key={index}>{part}</span>;
+  while (index < value.length) {
+    const remaining = value.slice(index);
+    const urlMatch = remaining.match(urlRegex);
 
-    const href = part.startsWith("http") ? part : `https://${part}`;
+    if (urlMatch) {
+      const label = urlMatch[0];
+      flushBuffer();
+      parts.push(
+        <a
+          key={`url-${parts.length}`}
+          href={normalizeHref(label)}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(event) => event.stopPropagation()}
+          className="text-blue-600 underline hover:text-blue-800"
+        >
+          {label}
+        </a>
+      );
+      index += label.length;
+      continue;
+    }
 
-    return (
-      <a
-        key={index}
-        href={href}
-        target="_blank"
-        rel="noopener noreferrer"
-        onClick={(event) => event.stopPropagation()}
-        className="text-blue-600 underline hover:text-blue-800"
-      >
-        {part}
-      </a>
-    );
-  });
+    const matchedTaskLink = taskLinks.find((link) => {
+      const token = `${link.title}*`;
+      if (value.slice(index, index + token.length).toLowerCase() !== token.toLowerCase()) return false;
+      const before = index > 0 ? value[index - 1] : "";
+      const after = value[index + token.length] || "";
+      return !isWordCharacter(before) && !isWordCharacter(after);
+    });
+
+    if (matchedTaskLink) {
+      flushBuffer();
+      parts.push(
+        <a
+          key={`named-link-${parts.length}`}
+          href={normalizeHref(matchedTaskLink.url)}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(event) => event.stopPropagation()}
+          className="text-blue-600 underline hover:text-blue-800"
+          title={matchedTaskLink.url}
+        >
+          {matchedTaskLink.title}
+        </a>
+      );
+      index += matchedTaskLink.title.length + 1;
+      continue;
+    }
+
+    buffer += value[index];
+    index += 1;
+  }
+
+  flushBuffer();
+  return <>{parts}</>;
 }
+
 
 function HistoryMessage({ message }) {
   const parts = String(message || "Change recorded").split(/(<strong>.*?<\/strong>)/g);
@@ -608,7 +678,11 @@ function withSequentialTaskOrder(taskList = []) {
 }
 
 function normalizeTasksWithOrder(taskList = []) {
-  return withSequentialTaskOrder(sortTasksByOrder(taskList));
+  const normalizedTasks = (Array.isArray(taskList) ? taskList : []).map((task) => ({
+    ...task,
+    links: normalizeTaskLinks(task?.links),
+  }));
+  return withSequentialTaskOrder(sortTasksByOrder(normalizedTasks));
 }
 
 function moveTaskBefore(taskList = [], draggedTaskId, targetTaskId) {
@@ -1458,6 +1532,7 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
       dependency: "",
       remarks: quickRemark,
       subtasks: [],
+      links: [],
     };
     setTasks((current) => withSequentialTaskOrder([task, ...sortTasksByOrder(current)]));
     addHistory({
@@ -1489,6 +1564,7 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
       dependency: "",
       remarks: remark,
       subtasks: [],
+      links: [],
     };
     setTasks((current) => withSequentialTaskOrder([task, ...sortTasksByOrder(current)]));
     addHistory({
@@ -1934,6 +2010,7 @@ function NoteTaskAppV1({ session, profile, onSignOut }) {
               title: subtaskTitle,
               done: false,
             })),
+            links: [],
           };
         })
         .filter(Boolean);
@@ -3233,7 +3310,7 @@ function MinimalTaskRow({ task, statuses, selectionMode, isSelected, selectedCou
           className="min-w-0 truncate text-left text-sm font-semibold leading-tight text-slate-900 hover:underline"
           title={task.title}
         >
-          {task.title}
+          <LinkifyText text={task.title} links={task.links} />
         </button>
         <input
           value={task.remarks || ""}
@@ -3338,7 +3415,7 @@ function TaskCard({ task, statuses, groups, priorities = ["High", "Medium", "Low
                   className="min-w-0 truncate text-left text-sm font-bold leading-tight text-slate-900 hover:underline"
                   title={task.title}
                 >
-                  {task.title}
+                  <LinkifyText text={task.title} links={task.links} />
                 </button>
 
                 <span
@@ -3357,7 +3434,7 @@ function TaskCard({ task, statuses, groups, priorities = ["High", "Medium", "Low
               </div>
 
               <div className="mt-0.5 min-w-0 truncate text-xs text-slate-400" title={task.remarks || "No remark"}>
-                {task.remarks ? <><span>Remark: </span><LinkifyText text={task.remarks} /></> : "No remark"}
+                {task.remarks ? <><span>Remark: </span><LinkifyText text={task.remarks} links={task.links} /></> : "No remark"}
               </div>
             </div>
 
@@ -3810,8 +3887,8 @@ function TableView({ statusColors, priorityColors, tagColors, tasks, statuses, g
                       >
                         {tableColumns.task && (
                           <td className="px-2 py-1.5">
-                            <button type="button" onClick={() => openTaskPopup(task.id)} className="text-left text-xs font-semibold leading-snug text-slate-900 hover:underline">{task.title}</button>
-                            {task.description && <div className="mt-0.5 text-[11px] leading-snug text-slate-500"><LinkifyText text={task.description} /></div>}
+                            <button type="button" onClick={() => openTaskPopup(task.id)} className="text-left text-xs font-semibold leading-snug text-slate-900 hover:underline"><LinkifyText text={task.title} links={task.links} /></button>
+                            {task.description && <div className="mt-0.5 text-[11px] leading-snug text-slate-500"><LinkifyText text={task.description} links={task.links} /></div>}
                           </td>
                         )}
                         {tableColumns.status && (
@@ -4031,7 +4108,7 @@ function KanbanView({ statusColors, priorityColors, tagColors, openTaskPopup, ka
                     className="kanban-task-card rounded-xl border border-slate-200 bg-white/95 p-2 shadow-sm"
                   >
                     <div className="mb-1 flex items-start justify-between gap-2">
-                      <button type="button" onClick={() => openTaskPopup(task.id)} className="min-w-0 text-left text-xs font-semibold leading-snug text-slate-900 hover:underline">{task.title}</button>
+                      <button type="button" onClick={() => openTaskPopup(task.id)} className="min-w-0 text-left text-xs font-semibold leading-snug text-slate-900 hover:underline"><LinkifyText text={task.title} links={task.links} /></button>
                       <span
                         className={classNames("light-chip shrink-0 rounded-full border px-1.5 py-0 text-[9px] font-medium", priorityBadgeClass(task.priority))}
                         style={priorityChipStyle(task.priority, priorityColors)}
@@ -4041,7 +4118,7 @@ function KanbanView({ statusColors, priorityColors, tagColors, openTaskPopup, ka
                     </div>
 
                     {task.remarks && (
-                      <div className="mb-1.5 line-clamp-2 text-[11px] leading-snug text-slate-500"><LinkifyText text={task.remarks} /></div>
+                      <div className="mb-1.5 line-clamp-2 text-[11px] leading-snug text-slate-500"><LinkifyText text={task.remarks} links={task.links} /></div>
                     )}
 
                     <div className="mb-1.5 flex flex-wrap items-center gap-1.5 text-[10px] text-slate-500">
@@ -4179,7 +4256,7 @@ function CalendarView({ statusColors, priorityColors, tasks, openTaskPopup, cale
               <div className="space-y-1.5">
                 {section.tasks.map((task) => (
                   <div key={task.id} className="rounded-lg bg-white px-2 py-1.5 shadow-sm ring-1 ring-slate-100">
-                    <button type="button" onClick={() => openTaskPopup(task.id)} className="text-left text-xs font-medium text-slate-900 hover:underline">{task.title}</button>
+                    <button type="button" onClick={() => openTaskPopup(task.id)} className="text-left text-xs font-medium text-slate-900 hover:underline"><LinkifyText text={task.title} links={task.links} /></button>
                     <div className="mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5 text-[10px] text-slate-500">
                       <span>{formatDate(task.deadline)}</span>
                       <span>{task.group}</span>
@@ -4507,7 +4584,7 @@ function GanttView({ statusColors, priorityColors, tasks, groups, statuses, prio
                             style={{ gridTemplateColumns: ganttGridTemplate }}
                           >
                             <div className="min-w-0">
-                              <button type="button" onClick={() => openTaskPopup(task.id)} className="whitespace-normal break-words text-left text-xs font-semibold leading-snug text-slate-900 hover:underline" title={task.title}>{task.title}</button>
+                              <button type="button" onClick={() => openTaskPopup(task.id)} className="whitespace-normal break-words text-left text-xs font-semibold leading-snug text-slate-900 hover:underline" title={task.title}><LinkifyText text={task.title} links={task.links} /></button>
                               <div className="mt-0.5 flex flex-wrap gap-1 text-[10px] text-slate-500">
                                 <span>{task.group}</span>
                                 <span>·</span>
@@ -4595,9 +4672,11 @@ function GanttView({ statusColors, priorityColors, tasks, groups, statuses, prio
 
 function TaskDetailModal({ statusColors, priorityColors, tagColors, task, statuses, groups, priorities = ["High", "Medium", "Low"], tags, allTasks, updateTask, toggleSubtask, addSubtask, updateSubtask = () => {}, removeSubtask = () => {}, removeTask, startHistoryField = () => {}, commitHistoryField = () => {}, onClose }) {
   const [draft, setDraft] = useState(task || null);
+  const [editingLinkId, setEditingLinkId] = useState(null);
 
   useEffect(() => {
     setDraft(task || null);
+    setEditingLinkId(null);
   }, [task]);
 
   useEffect(() => {
@@ -4610,8 +4689,33 @@ function TaskDetailModal({ statusColors, priorityColors, tagColors, task, status
 
   if (!task || !draft) return null;
 
+  const draftLinks = normalizeTaskLinks(draft.links);
+
   function updateDraft(patch) {
     setDraft((current) => ({ ...current, ...patch }));
+  }
+
+  function addTaskLink() {
+    const newLinkId = Date.now();
+    updateDraft({
+      links: [
+        ...draftLinks,
+        { id: newLinkId, title: "", url: "" },
+      ],
+    });
+    setEditingLinkId(newLinkId);
+  }
+
+  function updateTaskLink(linkId, patch) {
+    updateDraft({
+      links: draftLinks.map((link) =>
+        link.id === linkId ? { ...link, ...patch } : link
+      ),
+    });
+  }
+
+  function removeTaskLink(linkId) {
+    updateDraft({ links: draftLinks.filter((link) => link.id !== linkId) });
   }
 
   function saveChanges() {
@@ -4829,6 +4933,116 @@ function TaskDetailModal({ statusColors, priorityColors, tagColors, task, status
 
               <div className="rounded-xl bg-slate-50 p-3 text-xs text-slate-500">
                 Press <span className="font-semibold text-slate-700">Esc</span> to close and discard unsaved popup changes. Click <span className="font-semibold text-slate-700">Save</span> to apply edits.
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-white p-3">
+                <div className="mb-2 grid grid-cols-[1fr_auto] items-center gap-2">
+                  <div>
+                    <div className="text-xs font-semibold text-slate-700">Links</div>
+                    <div className="text-[10px] text-slate-400">Use Link Title* in title, description, or remark to make it clickable.</div>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={addTaskLink} className="h-7 rounded-lg px-3 text-[10px]">
+                    Add
+                  </Button>
+                </div>
+                <div className="overflow-hidden rounded-lg border border-slate-200 text-[10px]">
+                  <div className="grid grid-cols-[28px_minmax(82px,1fr)_minmax(96px,1.15fr)_34px_34px] border-b border-slate-200 bg-slate-50 px-1.5 py-1 text-[9px] font-semibold text-slate-500">
+                    <div>S.no.</div>
+                    <div>Title</div>
+                    <div>Link</div>
+                    <div className="text-center">Edit</div>
+                    <div className="text-center">Del</div>
+                  </div>
+                  {draftLinks.length ? draftLinks.map((link, linkIndex) => {
+                    const linkHref = link.url ? normalizeHref(link.url) : "";
+                    const isEditing = editingLinkId === link.id;
+                    return (
+                      <div key={link.id} className="grid grid-cols-[28px_minmax(82px,1fr)_minmax(96px,1.15fr)_34px_34px] items-center gap-1 border-b border-slate-100 px-1.5 py-1 last:border-b-0">
+                        <div className="text-[10px] text-slate-500">
+                          {linkHref ? (
+                            <a
+                              href={linkHref}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(event) => event.stopPropagation()}
+                              className="font-medium text-blue-600 underline hover:text-blue-800"
+                              title={link.url}
+                            >
+                              {linkIndex + 1}
+                            </a>
+                          ) : (
+                            linkIndex + 1
+                          )}
+                        </div>
+                        {isEditing ? (
+                          <Input
+                            value={link.title}
+                            onChange={(event) => updateTaskLink(link.id, { title: event.target.value })}
+                            placeholder="Title"
+                            className="h-6 min-w-0 rounded-lg px-1.5 text-[10px]"
+                          />
+                        ) : linkHref ? (
+                          <a
+                            href={linkHref}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(event) => event.stopPropagation()}
+                            className="whitespace-normal break-words font-medium text-blue-600 underline hover:text-blue-800"
+                            title={link.url}
+                          >
+                            {link.title || "Untitled link"}
+                          </a>
+                        ) : (
+                          <div className="whitespace-normal break-words text-slate-700">{link.title || "Untitled link"}</div>
+                        )}
+                        {isEditing ? (
+                          <Input
+                            value={link.url}
+                            onChange={(event) => updateTaskLink(link.id, { url: event.target.value })}
+                            placeholder="https://..."
+                            className="h-6 min-w-0 rounded-lg px-1.5 text-[10px]"
+                            title={link.url}
+                          />
+                        ) : linkHref ? (
+                          <a
+                            href={linkHref}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(event) => event.stopPropagation()}
+                            className="block min-w-0 truncate text-blue-600 underline hover:text-blue-800"
+                            title={link.url}
+                          >
+                            {link.url}
+                          </a>
+                        ) : (
+                          <div className="truncate text-slate-400">No URL</div>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setEditingLinkId(isEditing ? null : link.id)}
+                          className="h-6 rounded-lg px-1 text-[9px]"
+                          title={isEditing ? "Done editing" : "Edit link"}
+                        >
+                          {isEditing ? "Done" : "Edit"}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeTaskLink(link.id)}
+                          className="h-6 rounded-lg px-1 text-[9px] text-red-500 hover:text-red-700"
+                          title="Delete link"
+                        >
+                          Del
+                        </Button>
+                      </div>
+                    );
+                  }) : (
+                    <div className="px-2 py-3 text-center text-xs text-slate-400">
+                      No links yet.
+                    </div>
+                  )}
+                </div>
               </div>
 
               <Button variant="outline" onClick={() => { removeTask(task.id); onClose(); }} className="w-full rounded-xl text-red-600 hover:text-red-700">
