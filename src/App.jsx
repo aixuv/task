@@ -4945,20 +4945,20 @@ function TaskDetailModal({ statusColors, priorityColors, tagColors, task, status
                     Add
                   </Button>
                 </div>
-                <div className="overflow-hidden rounded-lg border border-slate-200 text-[11px]">
-                  <div className="grid grid-cols-[34px_minmax(120px,1.1fr)_minmax(120px,1.5fr)_42px_48px] border-b border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-semibold text-slate-500">
+                <div className="overflow-hidden rounded-lg border border-slate-200 text-[10px]">
+                  <div className="grid grid-cols-[28px_minmax(82px,1fr)_minmax(96px,1.15fr)_34px_34px] border-b border-slate-200 bg-slate-50 px-1.5 py-1 text-[9px] font-semibold text-slate-500">
                     <div>S.no.</div>
                     <div>Title</div>
                     <div>Link</div>
                     <div className="text-center">Edit</div>
-                    <div className="text-center">Delete</div>
+                    <div className="text-center">Del</div>
                   </div>
                   {draftLinks.length ? draftLinks.map((link, linkIndex) => {
                     const linkHref = link.url ? normalizeHref(link.url) : "";
                     const isEditing = editingLinkId === link.id;
                     return (
-                      <div key={link.id} className="grid grid-cols-[34px_minmax(120px,1.1fr)_minmax(120px,1.5fr)_42px_48px] items-center gap-1.5 border-b border-slate-100 px-2 py-1 last:border-b-0">
-                        <div className="text-[11px] text-slate-500">
+                      <div key={link.id} className="grid grid-cols-[28px_minmax(82px,1fr)_minmax(96px,1.15fr)_34px_34px] items-center gap-1 border-b border-slate-100 px-1.5 py-1 last:border-b-0">
+                        <div className="text-[10px] text-slate-500">
                           {linkHref ? (
                             <a
                               href={linkHref}
@@ -4979,7 +4979,7 @@ function TaskDetailModal({ statusColors, priorityColors, tagColors, task, status
                             value={link.title}
                             onChange={(event) => updateTaskLink(link.id, { title: event.target.value })}
                             placeholder="Title"
-                            className="h-6 min-w-0 rounded-lg px-2 text-[11px]"
+                            className="h-6 min-w-0 rounded-lg px-1.5 text-[10px]"
                           />
                         ) : linkHref ? (
                           <a
@@ -5000,7 +5000,7 @@ function TaskDetailModal({ statusColors, priorityColors, tagColors, task, status
                             value={link.url}
                             onChange={(event) => updateTaskLink(link.id, { url: event.target.value })}
                             placeholder="https://..."
-                            className="h-6 min-w-0 rounded-lg px-2 text-[11px]"
+                            className="h-6 min-w-0 rounded-lg px-1.5 text-[10px]"
                             title={link.url}
                           />
                         ) : linkHref ? (
@@ -5021,7 +5021,7 @@ function TaskDetailModal({ statusColors, priorityColors, tagColors, task, status
                           variant="ghost"
                           size="sm"
                           onClick={() => setEditingLinkId(isEditing ? null : link.id)}
-                          className="h-6 rounded-lg px-1.5 text-[10px]"
+                          className="h-6 rounded-lg px-1 text-[9px]"
                           title={isEditing ? "Done editing" : "Edit link"}
                         >
                           {isEditing ? "Done" : "Edit"}
@@ -5030,7 +5030,7 @@ function TaskDetailModal({ statusColors, priorityColors, tagColors, task, status
                           variant="ghost"
                           size="sm"
                           onClick={() => removeTaskLink(link.id)}
-                          className="h-6 rounded-lg px-1.5 text-[10px] text-red-500 hover:text-red-700"
+                          className="h-6 rounded-lg px-1 text-[9px] text-red-500 hover:text-red-700"
                           title="Delete link"
                         >
                           Del
